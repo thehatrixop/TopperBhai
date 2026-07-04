@@ -1,0 +1,17 @@
+# FrontEnd ignores
+FrontEnd/node_modules/
+FrontEnd/.next/
+FrontEnd/out/
+FrontEnd/.env*.local
+
+# Backend ignores
+backend/venv/
+backend/.env
+backend/__pycache__/
+backend/*.py[cod]
+
+# General
+.DS_Store
+
+# Dataset ignores
+dataset/
