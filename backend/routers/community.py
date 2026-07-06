@@ -5,26 +5,9 @@ import uuid
 import datetime
 import json
 from db.supabase_client import supabase
-from openai import OpenAI
+from db.cerebras_client import get_cerebras_client, CEREBRAS_TEXT_MODEL
 
 router = APIRouter()
-
-CEREBRAS_TEXT_MODEL = "gpt-oss-120b"
-CEREBRAS_BASE_URL   = "https://api.cerebras.ai/v1"
-
-_cerebras_client = None
-
-def get_cerebras_client() -> OpenAI:
-    global _cerebras_client
-    if _cerebras_client is None:
-        api_key = os.getenv("CEREBRAS_API_KEY")
-        if not api_key:
-            raise HTTPException(status_code=500, detail="CEREBRAS_API_KEY not set in .env")
-        _cerebras_client = OpenAI(
-            api_key=api_key,
-            base_url=CEREBRAS_BASE_URL,
-        )
-    return _cerebras_client
 
 # Thread-safe in-memory fallback storage in case Supabase tables are not seeded/created
 IN_MEMORY_POSTS = [

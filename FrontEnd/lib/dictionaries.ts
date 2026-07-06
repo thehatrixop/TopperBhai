@@ -55,6 +55,8 @@ export const dictionaries = {
     'scribe.chat.badge': 'TUTOR CHAT',
     'scribe.chat.placeholder': 'Ask the coach (e.g. \'Can we make it sound more professional?\')',
     'scribe.chat.loading': 'Coach is formulating analysis...',
+    'scribe.tab.coach': 'Draft Coach',
+    'scribe.tab.wizard': 'Draft Wizard',
 
     // Grading Dojo Page
     'grading.title': 'Welcome to Grading Dojo',
@@ -321,6 +323,8 @@ export const dictionaries = {
     'scribe.chat.badge': 'ट्यूटर चैट',
     'scribe.chat.placeholder': 'कोच से पूछें (जैसे: \'क्या हम इसे और पेशेवर बना सकते हैं?\')',
     'scribe.chat.loading': 'कोच प्रतिक्रिया तैयार कर रहा है...',
+    'scribe.tab.coach': 'ड्राफ्ट कोच',
+    'scribe.tab.wizard': 'ड्राफ्ट विज़ार्ड',
 
     // Grading Dojo Page
     'grading.title': 'मूल्यांकन डोजो में आपका स्वागत है',

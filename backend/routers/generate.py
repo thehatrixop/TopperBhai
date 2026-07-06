@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from models.paper_request import PaperRequest
+from models.requests import PaperRequest
 from db.supabase_client import supabase
 import fitz
 import io
@@ -10,7 +10,7 @@ import time
 import random
 from pathlib import Path
 from groq import Groq
-from openai import OpenAI
+from db.cerebras_client import get_cerebras_client, CEREBRAS_TEXT_MODEL
 
 router = APIRouter()
 
@@ -21,10 +21,6 @@ LOCAL_SAVE_DIR = BASE_DIR / "dataset" / "temporary data"
 
 # Groq: used ONLY for vision (PDF page transcription)
 VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
-
-# Cerebras: used for question generation (free, very high limits, OpenAI-compatible)
-CEREBRAS_TEXT_MODEL = "gpt-oss-120b"                    # best Cerebras free model
-CEREBRAS_BASE_URL   = "https://api.cerebras.ai/v1"      # Cerebras OpenAI-compatible endpoint
 
 # Challenge id → human difficulty label
 DIFFICULTY_MAP = {
@@ -45,23 +41,6 @@ def get_groq_client() -> Groq:
             raise HTTPException(status_code=500, detail="GROQ_API_KEY not set in .env")
         _groq_client = Groq(api_key=api_key)
     return _groq_client
-
-
-# ── Cerebras client (question generation) ──────────────────────────────────
-_cerebras_client = None
-
-def get_cerebras_client() -> OpenAI:
-    """Returns an OpenAI-compatible client pointed at Cerebras AI's endpoint."""
-    global _cerebras_client
-    if _cerebras_client is None:
-        api_key = os.getenv("CEREBRAS_API_KEY")
-        if not api_key:
-            raise HTTPException(status_code=500, detail="CEREBRAS_API_KEY not set in .env")
-        _cerebras_client = OpenAI(
-            api_key=api_key,
-            base_url=CEREBRAS_BASE_URL,
-        )
-    return _cerebras_client
 
 
 # ── Vision: transcribe one page ───────────────────────────────────────────────

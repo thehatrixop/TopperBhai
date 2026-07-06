@@ -1,27 +1,9 @@
 from fastapi import APIRouter, HTTPException
-import os
 import json
-from openai import OpenAI
-from models.grammar_request import GrammarCheckRequest, GrammarChatRequest
+from models.requests import GrammarCheckRequest, GrammarChatRequest, LetterFieldsRequest, LetterGenerateRequest
+from db.cerebras_client import get_cerebras_client, CEREBRAS_TEXT_MODEL
 
 router = APIRouter()
-
-CEREBRAS_TEXT_MODEL = "gpt-oss-120b"
-CEREBRAS_BASE_URL   = "https://api.cerebras.ai/v1"
-
-_cerebras_client = None
-
-def get_cerebras_client() -> OpenAI:
-    global _cerebras_client
-    if _cerebras_client is None:
-        api_key = os.getenv("CEREBRAS_API_KEY")
-        if not api_key:
-            raise HTTPException(status_code=500, detail="CEREBRAS_API_KEY not set in .env")
-        _cerebras_client = OpenAI(
-            api_key=api_key,
-            base_url=CEREBRAS_BASE_URL,
-        )
-    return _cerebras_client
 
 @router.post("/grammar/check")
 def check_grammar(request: GrammarCheckRequest):
@@ -126,6 +108,109 @@ Your Guidelines:
         )
         reply = response.choices[0].message.content.strip()
         return {"reply": reply}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Cerebras API call failed: {str(e)}"
+        )
+
+@router.post("/grammar/letter-fields")
+def get_letter_fields(request: LetterFieldsRequest):
+    client = get_cerebras_client()
+    
+    system_prompt = """You are "TopperBhai Letter Setup Assistant".
+The user wants to write a letter or email for a specific purpose.
+Your task is to identify what information (fields) is required from the user to write a perfect, complete letter/message for this purpose.
+
+Based on the purpose, return a JSON object with the following structure:
+{
+  "purpose": "Normalized, cleaned purpose title (e.g. Leave Application, Resignation, Project Update)",
+  "fields": [
+    {
+      "key": "unique_technical_key (e.g. sender_name, roll_no, start_date, recipient_post, reason)",
+      "label": "Human readable label (e.g. Full Name, Roll Number, Leave From, Recipient Designation, Reason for Leave)",
+      "type": "input field type. Must be one of: text, date, number, textarea",
+      "placeholder": "Helpful placeholder text indicating format or example",
+      "required": true
+    }
+  ]
+}
+
+STRICT RULES:
+1. Return ONLY the JSON object. Do not wrap in markdown or add notes.
+2. Customize the fields specifically for the purpose. For a leave application, ask for Name, Roll/Employee ID, Leave Dates (Start/End), Reason, Recipient designation/dept. For a rescheduling email, ask for event name, original date, new proposed date/time, reason.
+3. Keep it to 3-6 highly relevant fields to avoid overwhelming the user.
+"""
+
+    user_prompt = f"Writing Purpose: {request.purpose}"
+    
+    try:
+        response = client.chat.completions.create(
+            model=CEREBRAS_TEXT_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.2,
+            max_tokens=1000,
+            response_format={"type": "json_object"}
+        )
+        
+        raw_content = response.choices[0].message.content.strip()
+        result = json.loads(raw_content)
+        return result
+    except json.JSONDecodeError as parse_err:
+        raise HTTPException(
+            status_code=500,
+            detail=f"AI returned invalid JSON: {str(parse_err)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Cerebras API call failed: {str(e)}"
+        )
+
+@router.post("/grammar/letter-generate")
+def generate_letter(request: LetterGenerateRequest):
+    client = get_cerebras_client()
+    
+    system_prompt = """You are "TopperBhai Master Writer", an expert letter and email drafter.
+Your goal is to generate a perfectly written, professional, and well-structured letter or email based on the purpose and the specific details provided.
+
+STRICT RULES:
+1. Draft the letter/email professionally. Use appropriate salutation, body paragraphs, and sign-off.
+2. You must integrate ALL the provided details naturally into the text. Do NOT leave placeholders like [Name] in the final text; use the actual values provided.
+3. Format the letter nicely with newlines.
+4. Return a JSON object with:
+   - "subject": "A suitable, professional subject line"
+   - "body": "The complete drafted letter/email body"
+5. Return ONLY the JSON object. Do not wrap in markdown or add notes.
+"""
+
+    user_prompt = f"Purpose: {request.purpose}\nProvided Details:\n"
+    for key, value in request.fields_data.items():
+        user_prompt += f"- {key}: {value}\n"
+        
+    try:
+        response = client.chat.completions.create(
+            model=CEREBRAS_TEXT_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.3,
+            max_tokens=1500,
+            response_format={"type": "json_object"}
+        )
+        
+        raw_content = response.choices[0].message.content.strip()
+        result = json.loads(raw_content)
+        return result
+    except json.JSONDecodeError as parse_err:
+        raise HTTPException(
+            status_code=500,
+            detail=f"AI returned invalid JSON: {str(parse_err)}"
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500,
