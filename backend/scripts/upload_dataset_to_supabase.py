@@ -279,39 +279,67 @@ def migrate():
     topic_map = {t["name"]: t["id"] for t in topics_res.data}
     print(f"Mapped {len(topic_map)} topics in database.")
     
-    # 3. Upload crop images to Storage
+    # 3. Fetch existing files from storage to optimize validation checks (avoids hundreds of roundtrips)
+    print("\nFetching existing files index from Supabase Storage...")
+    existing_crop_files = set()
+    try:
+        res = supabase.storage.from_(STORAGE_BUCKET).list(path="pyq_images", options={"limit": 2000})
+        existing_crop_files = {f["name"] for f in res if isinstance(f, dict) and "name" in f}
+        print(f"Found {len(existing_crop_files)} existing crop images in Storage.")
+    except Exception as e:
+        print(f"[WARN] Could not fetch crop images index: {e}")
+
+    existing_page_files = set()
+    try:
+        res = supabase.storage.from_(STORAGE_BUCKET).list(path="page_images", options={"limit": 2000})
+        existing_page_files = {f["name"] for f in res if isinstance(f, dict) and "name" in f}
+        print(f"Found {len(existing_page_files)} existing page scans in Storage.")
+    except Exception as e:
+        print(f"[WARN] Could not fetch page scans index: {e}")
+
+    # 4. Upload crop images to Storage
     print("\n==============================================")
     print("UPLOADING QUESTION IMAGES TO STORAGE")
     print("==============================================")
     if IMAGES_DIR.exists():
         image_files = sorted(list(IMAGES_DIR.glob("*.png")) + list(IMAGES_DIR.glob("*.jpg")))
-        print(f"Found {len(image_files)} question images to upload...")
+        print(f"Found {len(image_files)} question images locally.")
         uploaded_count = 0
+        skipped_count = 0
         for i, img_path in enumerate(image_files, 1):
+            if img_path.name in existing_crop_files:
+                skipped_count += 1
+                continue
+                
             storage_path = f"pyq_images/{img_path.name}"
             if upload_file_to_supabase(img_path, storage_path):
                 uploaded_count += 1
-            if i % 50 == 0:
-                print(f"Progress: {i}/{len(image_files)} images processed")
-        print(f"Uploaded {uploaded_count}/{len(image_files)} question images.")
+            if i % 100 == 0:
+                print(f"Progress: {i}/{len(image_files)} images checked/processed")
+        print(f"Uploaded {uploaded_count} question images, skipped {skipped_count} existing.")
     else:
         print(f"[WARN] Images directory not found: {IMAGES_DIR}")
 
-    # 4. Upload page scan images to Storage
+    # 5. Upload page scan images to Storage
     print("\n==============================================")
     print("UPLOADING PAGE SCANS TO STORAGE")
     print("==============================================")
     if DATASET_DIR.exists():
         page_files = sorted(list(DATASET_DIR.glob("*.jpg")) + list(DATASET_DIR.glob("*.png")))
-        print(f"Found {len(page_files)} page scans in dataset to upload...")
+        print(f"Found {len(page_files)} page scans locally.")
         uploaded_pages = 0
+        skipped_pages = 0
         for i, page_path in enumerate(page_files, 1):
+            if page_path.name in existing_page_files:
+                skipped_pages += 1
+                continue
+                
             storage_path = f"page_images/{page_path.name}"
             if upload_file_to_supabase(page_path, storage_path):
                 uploaded_pages += 1
-            if i % 20 == 0:
-                print(f"Progress: {i}/{len(page_files)} pages processed")
-        print(f"Uploaded {uploaded_pages}/{len(page_files)} page scan images.")
+            if i % 50 == 0:
+                print(f"Progress: {i}/{len(page_files)} pages checked/processed")
+        print(f"Uploaded {uploaded_pages} page scan images, skipped {skipped_pages} existing.")
     else:
         print(f"[WARN] Dataset directory not found: {DATASET_DIR}")
 
