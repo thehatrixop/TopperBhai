@@ -180,11 +180,6 @@ def generate_questions_with_ai(
 
     difficulty_desc = DIFFICULTY_MAP.get(challenge, f"{challenge} difficulty")
 
-    # Safety: keep within ~300k chars to stay comfortably under 128k token limit
-    MAX_CHARS = 300_000
-    if len(knowledge_context) > MAX_CHARS:
-        knowledge_context = knowledge_context[:MAX_CHARS] + "\n\n[Content truncated]"
-
     system_prompt = """You are an expert exam question paper creator for aptitude and academic exams.
 Generate high-quality multiple choice questions (MCQs) based ONLY on the provided study material.
 
@@ -225,18 +220,11 @@ OUTPUT FORMAT (return this exact structure):
         f"Return exactly {question_count} questions in the specified JSON format."
     )
 
-    # ~450 tokens per question (question text + 4 options + answer + detailed explanation + JSON overhead)
-    # Generous budget to prevent truncation; cap at 16,000 for first attempt
     MAX_ATTEMPTS = 2
-    base_tokens  = question_count * 450 + 500
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        # On retry, give 50% more tokens
-        multiplier    = 1.0 if attempt == 1 else 1.5
-        output_tokens = min(int(base_tokens * multiplier), 16_384)
-
         print(f"  [Attempt {attempt}/{MAX_ATTEMPTS}] Sending to AI ({model}) — "
-              f"{question_count} questions @ {difficulty_desc}, max_tokens={output_tokens}...")
+              f"{question_count} questions @ {difficulty_desc}...")
 
         try:
             response = client.chat.completions.create(
@@ -245,7 +233,6 @@ OUTPUT FORMAT (return this exact structure):
                     {"role": "system", "content": system_prompt},
                     {"role": "user",   "content": user_prompt},
                 ],
-                max_tokens=output_tokens,
                 temperature=0.7,
                 response_format={"type": "json_object"},
             )
@@ -285,7 +272,7 @@ OUTPUT FORMAT (return this exact structure):
                     status_code=500,
                     detail=f"AI returned invalid JSON after {MAX_ATTEMPTS} attempts: {str(parse_err)}"
                 )
-            print(f"  Retrying with higher token budget...")
+            print(f"  Retrying...")
 
 
 def _shuffle_options_for_questions(questions: list[dict]) -> list[dict]:
