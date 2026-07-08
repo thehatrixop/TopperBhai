@@ -9,39 +9,7 @@ from db.cerebras_client import get_cerebras_client, CEREBRAS_TEXT_MODEL
 
 router = APIRouter()
 
-# Thread-safe in-memory fallback storage in case Supabase tables are not seeded/created
-IN_MEMORY_POSTS = [
-    {
-        "id": "e67272fb-40c4-4b53-a55e-4ad2b0c3f590",
-        "title": "Struggling with B-Tree Insertion flow",
-        "content": "Can someone explain how node splitting works in B-Trees when we insert an element and the node is full? An animated/step-by-step logic would be very helpful.",
-        "author_alias": "DiscreteMaster #1",
-        "subject": "Data Structures and Algorithms",
-        "likes": 5,
-        "created_at": (datetime.datetime.now() - datetime.timedelta(hours=2)).isoformat(),
-        "replies_count": 1
-    },
-    {
-        "id": "fc5674c1-90a4-4df1-bd93-6bd12cb4f553",
-        "title": "SQL Join Venn Diagrams vs reality",
-        "content": "Are Venn diagrams actually accurate for SQL Outer Joins? My professor said they are conceptually misleading since database joins are Cartesian products under the hood.",
-        "author_alias": "QueryCracker #7",
-        "subject": "Database Management Systems",
-        "likes": 3,
-        "created_at": (datetime.datetime.now() - datetime.timedelta(hours=5)).isoformat(),
-        "replies_count": 0
-    }
-]
 
-IN_MEMORY_REPLIES = [
-    {
-        "id": "de512683-10e3-469b-9807-6adcf8c7921a",
-        "post_id": "e67272fb-40c4-4b53-a55e-4ad2b0c3f590",
-        "content": "When a B-Tree node exceeds its maximum capacity, we split it at the median index. The median element moves up to the parent node, and the left/right parts become two separate child nodes. It happens recursively if the parent also gets full!",
-        "author_alias": "CuriousCoder #9",
-        "created_at": (datetime.datetime.now() - datetime.timedelta(hours=1)).isoformat()
-    }
-]
 
 class CreatePostRequest(BaseModel):
     title: str
@@ -112,13 +80,7 @@ def get_posts(subject: str = None):
             posts.append(row)
         return posts
     except Exception as e:
-        print(f"Supabase community_posts read failed, falling back to memory: {e}")
-        # Fallback to in-memory store
-        filtered = IN_MEMORY_POSTS
-        if subject:
-            filtered = [p for p in IN_MEMORY_POSTS if p["subject"].lower() == subject.lower()]
-        # Sort by created_at desc
-        return sorted(filtered, key=lambda x: x["created_at"], reverse=True)
+        raise HTTPException(status_code=500, detail=f"Database read failed: {str(e)}")
 
 @router.post("/community/posts")
 def create_post(request: CreatePostRequest):
@@ -155,10 +117,7 @@ def create_post(request: CreatePostRequest):
             return post_data
         raise Exception("No data returned")
     except Exception as e:
-        print(f"Supabase community_posts write failed, saving to memory: {e}")
-        new_post["replies_count"] = 0
-        IN_MEMORY_POSTS.append(new_post)
-        return new_post
+        raise HTTPException(status_code=500, detail=f"Database insert failed: {str(e)}")
 
 @router.get("/community/posts/{post_id}")
 def get_post_details(post_id: str):
@@ -168,8 +127,7 @@ def get_post_details(post_id: str):
         res = supabase.table("community_posts").select("*").eq("id", post_id).single().execute()
         post = res.data
     except Exception as e:
-        print(f"Supabase post details read failed, using memory: {e}")
-        post = next((p for p in IN_MEMORY_POSTS if p["id"] == post_id), None)
+        raise HTTPException(status_code=500, detail=f"Database read failed: {str(e)}")
         
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
@@ -180,8 +138,7 @@ def get_post_details(post_id: str):
         replies_res = supabase.table("community_replies").select("*").eq("post_id", post_id).order("created_at", desc=False).execute()
         replies = replies_res.data or []
     except Exception as e:
-        print(f"Supabase replies read failed, using memory: {e}")
-        replies = [r for r in IN_MEMORY_REPLIES if r["post_id"] == post_id]
+        raise HTTPException(status_code=500, detail=f"Database read failed: {str(e)}")
         
     post["replies"] = sorted(replies, key=lambda x: x["created_at"])
     return post
@@ -217,14 +174,7 @@ def create_reply(post_id: str, request: CreateReplyRequest):
             return res.data[0]
         raise Exception("No reply data returned")
     except Exception as e:
-        print(f"Supabase community_replies write failed, saving to memory: {e}")
-        # Insert in memory
-        IN_MEMORY_REPLIES.append(new_reply)
-        # Update replies count in memory post
-        for p in IN_MEMORY_POSTS:
-            if p["id"] == post_id:
-                p["replies_count"] = p.get("replies_count", 0) + 1
-        return new_reply
+        raise HTTPException(status_code=500, detail=f"Database insert failed: {str(e)}")
 
 @router.post("/community/posts/{post_id}/like")
 def like_post(post_id: str):
@@ -240,9 +190,4 @@ def like_post(post_id: str):
             return update_res.data[0]
         raise Exception("Likes update failed")
     except Exception as e:
-        print(f"Supabase post like update failed, updating memory: {e}")
-        for p in IN_MEMORY_POSTS:
-            if p["id"] == post_id:
-                p["likes"] = p.get("likes", 0) + 1
-                return p
-        raise HTTPException(status_code=404, detail="Post not found")
+        raise HTTPException(status_code=500, detail=f"Database update failed: {str(e)}")
