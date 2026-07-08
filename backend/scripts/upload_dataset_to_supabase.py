@@ -129,23 +129,23 @@ def retry_on_exception(retries=3, delay=1.0):
 
 # Setup AI Clients
 def get_ai_client():
-    cerebras_key = os.getenv("CEREBRAS_API_KEY")
     groq_key = os.getenv("GROQ_API_KEY")
+    cerebras_key = os.getenv("CEREBRAS_API_KEY")
     
-    if cerebras_key:
-        from db.cerebras_client import CEREBRAS_TEXT_MODEL, CEREBRAS_BASE_URL
-        print("[INFO] Using Cerebras for topic classification")
-        return OpenAI(api_key=cerebras_key, base_url=CEREBRAS_BASE_URL), CEREBRAS_TEXT_MODEL
-    elif groq_key:
+    if groq_key:
         print("[INFO] Using Groq for topic classification")
         return Groq(api_key=groq_key), "llama-3.1-8b-instant"
+    elif cerebras_key:
+        print("[INFO] Using Cerebras for topic classification")
+        # Use a standard Cerebras model name like llama3.1-8b
+        return OpenAI(api_key=cerebras_key, base_url="https://api.cerebras.ai/v1"), "llama3.1-8b"
     else:
         print("[WARN] No CEREBRAS_API_KEY or GROQ_API_KEY found in environment. Classification fallback will use default topic.")
         return None, None
 
 ai_client, ai_model = get_ai_client()
 
-@retry_on_exception(retries=3, delay=2.0)
+@retry_on_exception(retries=2, delay=0.5)
 def classify_with_llm(question_text: str) -> str:
     if not ai_client:
         return "Discrete Structures and Optimization" # Default fallback
