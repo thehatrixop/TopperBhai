@@ -57,7 +57,6 @@ export default function SuccessPage() {
   const [tempFitbInputs, setTempFitbInputs]   = useState<Record<number, string>>({})
   const [isChallengeStarted, setIsChallengeStarted] = useState(false)
   const [timeRemaining, setTimeRemaining]           = useState<number>(0)
-  const [timeElapsed, setTimeElapsed]   = useState(0)
   const [timerActive, setTimerActive]   = useState(false)
 
   // Single-question timer states
@@ -78,17 +77,7 @@ export default function SuccessPage() {
     }
   }, [activeQuestionTimerRunning])
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null
-    if (timerActive) {
-      interval = setInterval(() => {
-        setTimeElapsed(prev => prev + 1)
-      }, 1000)
-    }
-    return () => {
-      if (interval) clearInterval(interval)
-    }
-  }, [timerActive])
+
 
   const totalQuestions = paper?.questions.length || 0
   const answeredCount = Object.keys(selectedAnswers).length
@@ -237,56 +226,7 @@ export default function SuccessPage() {
               <option value="hi">हिंदी (Hindi)</option>
             </select>
 
-            {/* Stopwatch Timer Controls */}
-            <div className="flex items-center gap-2 bg-topper-charcoal border-2 border-topper-graphite p-1 rounded-md shadow-[2px_2px_0_rgba(0,0,0,1)]">
-              <div className="px-3.5 py-1.5 font-mono font-black text-sm flex items-center gap-1.5 select-none">
-                <span className={`w-2 h-2 rounded-full ${timerActive ? 'bg-red-500 animate-pulse' : 'bg-topper-graphite'}`} />
-                <span className="text-topper-graphite">{t('success.time')}:</span>
-                <span className={timerActive ? 'text-topper-amber' : 'text-topper-off-white'}>
-                  {formatElapsed(timeElapsed)}
-                </span>
-              </div>
-              
-              <div className="flex gap-1 border-l border-topper-graphite/40 pl-1">
-                {/* Start / Pause / Resume Button */}
-                {!timerActive && timeElapsed === 0 ? (
-                  <button
-                    onClick={() => setTimerActive(true)}
-                    className="px-2.5 py-1 text-xs font-black bg-topper-amber text-topper-black border border-topper-amber rounded hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer"
-                  >
-                    {t('success.start')}
-                  </button>
-                ) : timerActive ? (
-                  <button
-                    onClick={() => setTimerActive(false)}
-                    className="px-2.5 py-1 text-xs font-black bg-transparent text-topper-off-white border border-topper-graphite hover:border-red-500 hover:text-red-500 rounded hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer"
-                  >
-                    {t('success.pause')}
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setTimerActive(true)}
-                    className="px-2.5 py-1 text-xs font-black bg-topper-amber text-topper-black border border-topper-amber rounded hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer"
-                  >
-                    {t('success.resume')}
-                  </button>
-                )}
- 
-                {/* Restart / Reset Button */}
-                {(timeElapsed > 0 || timerActive) && (
-                  <button
-                    onClick={() => {
-                      setTimerActive(false)
-                      setTimeElapsed(0)
-                    }}
-                    className="px-2.5 py-1 text-xs font-black bg-transparent text-topper-graphite hover:text-topper-off-white border border-topper-graphite hover:border-topper-off-white rounded hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer"
-                    title="Restart timer"
-                  >
-                    {language === 'hi' ? 'पुनः आरंभ करें' : 'Restart'}
-                  </button>
-                )}
-              </div>
-            </div>
+
 
             <motion.button
               whileHover={{ scale: 1.05 }}
