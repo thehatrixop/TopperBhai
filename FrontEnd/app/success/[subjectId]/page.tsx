@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Download, ChevronRight, CheckCircle, XCircle, Clock } from 'lucide-react'
+import { Download, ChevronRight, CheckCircle, XCircle, Clock, Menu, X } from 'lucide-react'
 import QuestionChat from '@/components/QuestionChat'
 import { useLanguage } from '@/lib/LanguageContext'
 
@@ -58,6 +59,9 @@ export default function SuccessPage() {
   const [isChallengeStarted, setIsChallengeStarted] = useState(false)
   const [timeRemaining, setTimeRemaining]           = useState<number>(0)
   const [timerActive, setTimerActive]   = useState(false)
+  const [isSubmitted, setIsSubmitted]   = useState(false)
+  const [showSubmitModal, setShowSubmitModal] = useState(false)
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   // Single-question timer states
   const [activeQuestionTime, setActiveQuestionTime] = useState<number>(0)
@@ -92,6 +96,25 @@ export default function SuccessPage() {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+  }
+
+  const getScore = () => {
+    let correct = 0
+    let incorrect = 0
+    let unattempted = 0
+    
+    paper?.questions.forEach(q => {
+      const ans = selectedAnswers[q.id]
+      if (!ans) {
+        unattempted++
+      } else if (ans.trim().toLowerCase() === q.correct_answer.trim().toLowerCase()) {
+        correct++
+      } else {
+        incorrect++
+      }
+    })
+    
+    return { correct, incorrect, unattempted }
   }
 
   const handleSelectOption = (questionId: number, optionKey: string) => {
@@ -140,6 +163,7 @@ export default function SuccessPage() {
           if (prev <= 1) {
             if (interval) clearInterval(interval)
             setTimerActive(false)
+            setIsSubmitted(true)
             setShowAnswers(true) // Auto-submit
             alert(language === 'hi' ? 'समय समाप्त! आपका अभ्यास पत्र स्वतः जमा कर दिया गया है।' : "Time's up! Your practice paper has been auto-submitted.")
             return 0
@@ -215,12 +239,14 @@ export default function SuccessPage() {
         
         {/* ── Top bar ── */}
         <nav className="no-print border-b-2 border-topper-graphite px-6 py-4 md:px-12 flex items-center justify-between bg-topper-black z-10 relative">
-          <span className="text-2xl font-bold tracking-tighter">{t('subjects.back')}</span>
+          <Link href="/">
+            <span className="text-2xl font-black tracking-tighter hover:text-topper-amber transition-colors cursor-pointer select-none">{t('subjects.back')}</span>
+          </Link>
           <div className="flex items-center gap-3">
             <select
               value={language}
               onChange={(e) => setLanguage(e.target.value as 'en' | 'hi')}
-              className="bg-topper-charcoal border border-topper-graphite/40 text-topper-off-white text-xs font-semibold rounded-full px-3 py-1.5 focus:outline-none focus:border-topper-amber/70 cursor-pointer"
+              className="bg-topper-charcoal border border-topper-graphite/40 text-topper-off-white text-xs font-semibold rounded-md px-3 py-1.5 focus:outline-none focus:border-topper-amber/70 cursor-pointer"
             >
               <option value="en">English</option>
               <option value="hi">हिंदी (Hindi)</option>
@@ -228,29 +254,107 @@ export default function SuccessPage() {
 
 
 
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setShowAnswers(p => !p)}
-              className={`px-4 py-2 font-bold border-2 rounded text-sm transition-colors ${
-                showAnswers
-                  ? 'bg-topper-amber border-topper-amber text-topper-black'
-                  : 'border-topper-graphite text-topper-off-white hover:border-topper-amber'
-              }`}
-            >
-              {showAnswers 
-                ? (language === 'hi' ? 'उत्तर और स्पष्टीकरण छिपाएं' : 'Hide Answers & Explanations') 
-                : t('success.showAnswers')}
-            </motion.button>
+            {!isSubmitted ? (
+              (isChallengeStarted || !(paper.timeLimit && paper.timeLimit !== 'none')) && (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setShowSubmitModal(true)}
+                  className="px-4 py-2 bg-topper-amber text-topper-black font-black border-2 border-topper-amber hover:bg-white hover:border-white rounded-md text-sm transition-all cursor-pointer"
+                >
+                  {language === 'hi' ? 'परीक्षा जमा करें' : 'Submit Test'}
+                </motion.button>
+              )
+            ) : (
+              <>
+                <div className="px-4 py-2 bg-green-500/10 border-2 border-green-500 text-green-400 font-extrabold rounded-md text-sm flex items-center gap-1.5 select-none">
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  {language === 'hi' ? 'जमा हो गया' : 'Submitted'}
+                </div>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setShowAnswers(p => !p)}
+                  className={`px-4 py-2 font-bold border-2 rounded-md text-sm transition-colors ${
+                    showAnswers
+                      ? 'bg-topper-amber border-topper-amber text-topper-black'
+                      : 'border-topper-graphite text-topper-off-white hover:border-topper-amber'
+                  }`}
+                >
+                  {showAnswers 
+                    ? (language === 'hi' ? 'उत्तर और स्पष्टीकरण छिपाएं' : 'Hide Answers & Explanations') 
+                    : t('success.showAnswers')}
+                </motion.button>
+              </>
+            )}
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2 bg-topper-amber text-topper-black font-bold border-2 border-topper-amber rounded text-sm"
+              className="flex items-center gap-2 px-4 py-2 bg-topper-amber text-topper-black font-bold border-2 border-topper-amber rounded-md text-sm"
             >
               <Download className="w-4 h-4" />
               {t('success.printDownload')}
             </motion.button>
+
+            {/* Hamburger Menu Option */}
+            <div className="relative">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                className="p-2 text-topper-off-white hover:text-topper-amber border-2 border-topper-graphite hover:border-topper-amber rounded-md transition-all cursor-pointer flex items-center justify-center bg-topper-charcoal"
+                aria-label="Toggle features menu"
+              >
+                {isMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </motion.button>
+
+              <AnimatePresence>
+                {isMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 mt-3 w-64 bg-[#121212] border-2 border-topper-graphite rounded-lg shadow-[8px_8px_0_rgba(0,0,0,1)] z-50 overflow-hidden"
+                  >
+                    <div className="p-4 border-b border-topper-graphite/40">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-topper-amber">
+                        {language === 'hi' ? 'नेविगेशन' : 'Navigation Menu'}
+                      </p>
+                    </div>
+                    <div className="p-2 space-y-1">
+                      <Link
+                        href="/"
+                        onClick={() => setIsMenuOpen(false)}
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-topper-graphite/40 text-topper-off-white hover:text-topper-amber text-sm font-bold tracking-wide transition-colors"
+                      >
+                        <span className="text-base">🏠</span>
+                        <span>{language === 'hi' ? 'मुख्य पृष्ठ' : 'Home'}</span>
+                      </Link>
+                      {[
+                        { name: t('nav.focus'), href: '/features/focus-dojo', icon: '⏱' },
+                        { name: t('nav.tasks'), href: '/features/task-quest', icon: '⚔️' },
+                        { name: t('nav.scribe'), href: '/features/scribe-dojo', icon: '✍️' },
+                        { name: t('nav.grading'), href: '/features/grading-dojo', icon: '🔎' },
+                        { name: t('nav.concept'), href: '/features/concept-dojo', icon: '💡' },
+                        { name: t('nav.planner'), href: '/features/study-planner', icon: '📅' }
+                      ].map((item, idx) => (
+                        <Link
+                          key={idx}
+                          href={item.href}
+                          onClick={() => setIsMenuOpen(false)}
+                          className="flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-topper-graphite/40 text-topper-off-white hover:text-topper-amber text-sm font-bold tracking-wide transition-colors"
+                        >
+                          <span className="text-base">{item.icon}</span>
+                          <span>{item.name}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </nav>
 
@@ -282,43 +386,111 @@ export default function SuccessPage() {
                 {language === 'hi' ? 'पेपर तैयार है!' : 'Paper Ready!'}
               </h1>
 
-              {/* Stats */}
-              <div className="mb-8 p-6 bg-topper-charcoal border-2 border-topper-graphite rounded flex flex-col gap-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div>
-                    <p className="text-topper-graphite text-xs mb-1">{t('success.stats.questions')}</p>
-                    <p className="text-3xl font-black text-topper-amber">{paper.questions.length}</p>
+              {/* Stats / Results Panel */}
+              {isSubmitted ? (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="mb-8 p-6 bg-gradient-to-br from-[#1c2c1c] to-topper-charcoal border-2 border-green-500/50 rounded-lg shadow-[4px_4px_0_rgba(0,0,0,1)] relative overflow-hidden"
+                >
+                  {/* Decorative manga badge */}
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-green-500 text-topper-black flex items-center justify-center font-black text-xs uppercase rotate-45 translate-x-8 -translate-y-8 tracking-widest shadow border-l border-b border-topper-black">
+                    Done!
                   </div>
-                  <div>
-                    <p className="text-topper-graphite text-xs mb-1">{t('success.stats.topics')}</p>
-                    <p className="text-sm font-bold text-topper-off-white leading-tight">{paper.topics.join(', ')}</p>
+
+                  <h2 className="text-2xl font-black mb-4 uppercase tracking-wider text-green-400 flex items-center gap-2">
+                    <span>🏆</span> {language === 'hi' ? 'चुनौती परिणाम' : 'CHALLENGE RESULTS'}
+                  </h2>
+
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+                    {/* Accuracy Ring/Big Stat */}
+                    <div className="text-center md:border-r border-topper-graphite/30 py-2">
+                      <p className="text-topper-graphite text-xs uppercase font-extrabold tracking-wider mb-1">
+                        {language === 'hi' ? 'सटीकता' : 'Accuracy'}
+                      </p>
+                      <p className="text-4xl font-black text-green-400">
+                        {Math.round((getScore().correct / paper.questions.length) * 100)}%
+                      </p>
+                    </div>
+
+                    {/* Breakdown */}
+                    <div className="col-span-2 md:border-r border-topper-graphite/30 px-2 md:px-6 py-2 grid grid-cols-3 gap-2">
+                      <div className="text-center bg-[#1e2f1e]/40 p-2 rounded border border-green-500/20">
+                        <p className="text-[10px] text-green-400/80 font-bold uppercase">{language === 'hi' ? 'सही' : 'Correct'}</p>
+                        <p className="text-xl font-black text-green-400">{getScore().correct}</p>
+                      </div>
+                      <div className="text-center bg-[#341d1d]/40 p-2 rounded border border-red-500/20">
+                        <p className="text-[10px] text-red-400/80 font-bold uppercase">{language === 'hi' ? 'गलत' : 'Incorrect'}</p>
+                        <p className="text-xl font-black text-red-400">{getScore().incorrect}</p>
+                      </div>
+                      <div className="text-center bg-topper-black/30 p-2 rounded border border-topper-graphite/20">
+                        <p className="text-[10px] text-topper-graphite/80 font-bold uppercase">{language === 'hi' ? 'छूटे हुए' : 'Unattempted'}</p>
+                        <p className="text-xl font-black text-topper-off-white">{getScore().unattempted}</p>
+                      </div>
+                    </div>
+
+                    {/* Time Taken */}
+                    <div className="text-center py-2">
+                      <p className="text-topper-graphite text-xs uppercase font-extrabold tracking-wider mb-1">
+                        {language === 'hi' ? 'कुल समय' : 'Total Time'}
+                      </p>
+                      <p className="text-2xl font-mono font-black text-topper-amber">
+                        {formatElapsed(totalActiveSolveTime)}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-topper-graphite text-xs mb-1">{t('success.stats.difficulty')}</p>
-                    <p className="text-sm font-black text-topper-amber capitalize">
-                      {t(`success.stats.${paper.challenge}` as any) || paper.challenge}
-                    </p>
+
+                  {/* Motivational Text */}
+                  <div className="mt-4 pt-4 border-t border-topper-graphite/20 text-sm text-topper-off-white/80">
+                    <span className="font-extrabold text-topper-amber">TopperBhai Owl: </span>
+                    {(() => {
+                      const scoreData = getScore()
+                      const pct = (scoreData.correct / paper.questions.length) * 100
+                      if (pct >= 90) return language === 'hi' ? 'अद्भुत! आप एक सच्चे टॉपर हैं। शानदार परिणाम!' : 'Outstanding! You are a true Topper. Incredible accuracy!'
+                      if (pct >= 70) return language === 'hi' ? 'बहुत बढ़िया! थोड़ा और अभ्यास और आप पूर्णता प्राप्त कर लेंगे।' : 'Great job! Just a tiny bit of refinement and you\'ll hit 100%.'
+                      if (pct >= 50) return language === 'hi' ? 'अच्छा प्रयास। नीचे दिए गए स्पष्टीकरणों को ध्यान से पढ़ें और सीखें।' : 'Good attempt. Read through the explanations below to patch up your weak spots.'
+                      return language === 'hi' ? 'हार मत मानो! स्पष्टीकरण पढ़ें, सीखें और दोबारा प्रयास करें।' : 'Don\'t be discouraged! Read the explanations, review the topics, and try another run.'
+                    })()}
                   </div>
-                  <div>
-                    <p className="text-topper-graphite text-xs mb-1">
-                      {paper.timeLimit && paper.timeLimit !== 'none'
-                        ? (language === 'hi' ? 'शेष समय' : 'TIME REMAINING')
-                        : (language === 'hi' ? 'लिया गया समय' : 'TIME TAKEN')
-                      }
-                    </p>
-                    <p className={`text-3xl font-black font-mono transition-colors ${
-                      paper.timeLimit && paper.timeLimit !== 'none'
-                        ? timeRemaining < 30 ? 'text-red-500 animate-pulse' : 'text-topper-amber'
-                        : activeQuestionTimerRunning ? 'text-topper-amber animate-pulse' : 'text-topper-off-white'
-                    }`}>
-                      {paper.timeLimit && paper.timeLimit !== 'none'
-                        ? formatElapsed(timeRemaining)
-                        : formatElapsed(totalActiveSolveTime)
-                      }
-                    </p>
+                </motion.div>
+              ) : (
+                <div className="mb-8 p-6 bg-topper-charcoal border-2 border-topper-graphite rounded flex flex-col gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <p className="text-topper-graphite text-xs mb-1">{t('success.stats.questions')}</p>
+                      <p className="text-3xl font-black text-topper-amber">{paper.questions.length}</p>
+                    </div>
+                    <div>
+                      <p className="text-topper-graphite text-xs mb-1">{t('success.stats.topics')}</p>
+                      <p className="text-sm font-bold text-topper-off-white leading-tight">{paper.topics.join(', ')}</p>
+                    </div>
+                    <div>
+                      <p className="text-topper-graphite text-xs mb-1">{t('success.stats.difficulty')}</p>
+                      <p className="text-sm font-black text-topper-amber capitalize">
+                        {t(`success.stats.${paper.challenge}` as any) || paper.challenge}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-topper-graphite text-xs mb-1">
+                        {paper.timeLimit && paper.timeLimit !== 'none'
+                          ? (language === 'hi' ? 'शेष समय' : 'TIME REMAINING')
+                          : (language === 'hi' ? 'लिया गया समय' : 'TIME TAKEN')
+                        }
+                      </p>
+                      <p className={`text-3xl font-black font-mono transition-colors ${
+                        paper.timeLimit && paper.timeLimit !== 'none'
+                          ? timeRemaining < 30 ? 'text-red-500 animate-pulse' : 'text-topper-amber'
+                          : activeQuestionTimerRunning ? 'text-topper-amber animate-pulse' : 'text-topper-off-white'
+                      }`}>
+                        {paper.timeLimit && paper.timeLimit !== 'none'
+                          ? formatElapsed(timeRemaining)
+                          : formatElapsed(totalActiveSolveTime)
+                        }
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
           </motion.div>
 
@@ -366,7 +538,7 @@ export default function SuccessPage() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: Math.min(index * 0.04, 1) }}
-                  className="question-card bg-topper-charcoal border-2 border-topper-graphite rounded-lg overflow-hidden"
+                  className="question-card bg-[#121212] border-2 border-topper-graphite rounded-lg overflow-hidden shadow-md"
                 >
                   {/* Question header */}
                   <div
@@ -407,7 +579,11 @@ export default function SuccessPage() {
                   >
                     <div className="flex items-start gap-4 justify-between">
                       <div className="flex items-start gap-4 flex-1">
-                        <span className="flex-shrink-0 w-8 h-8 bg-topper-amber text-topper-black rounded font-black text-sm flex items-center justify-center">
+                        <span className={`flex-shrink-0 w-8 h-8 rounded-md font-black text-sm flex items-center justify-center transition-all ${
+                          selectedAnswers[q.id]
+                            ? 'bg-topper-amber text-topper-black border-2 border-topper-amber'
+                            : 'bg-[#181818] text-[#a0a0a0] border-2 border-topper-graphite'
+                        }`}>
                           {index + 1}
                         </span>
                         <div className="flex-1">
@@ -535,7 +711,7 @@ export default function SuccessPage() {
                                     value={tempFitbInputs[q.id] || ''}
                                     onChange={(e) => setTempFitbInputs(prev => ({ ...prev, [q.id]: e.target.value }))}
                                     placeholder={language === 'hi' ? 'अपना उत्तर यहाँ लिखें...' : 'Type your answer...'}
-                                    className="flex-1 bg-topper-black border border-topper-graphite text-topper-off-white text-sm px-4 py-2.5 rounded focus:outline-none focus:border-topper-amber/60 placeholder-topper-graphite transition-colors"
+                                    className="flex-1 bg-topper-black border-2 border-topper-graphite text-topper-off-white text-sm px-4 py-2.5 rounded-md focus:outline-none focus:border-topper-amber placeholder-topper-graphite transition-all"
                                   />
                                   <button
                                     onClick={() => {
@@ -549,7 +725,7 @@ export default function SuccessPage() {
                                         setQuestionTimes(prev => ({ ...prev, [q.id]: activeQuestionTime }))
                                       }
                                     }}
-                                    className="px-5 py-2.5 bg-topper-amber text-topper-black font-extrabold text-sm rounded hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-[2px_2px_0_rgba(0,0,0,1)] border border-topper-black cursor-pointer"
+                                    className="px-5 py-2.5 bg-topper-amber text-topper-black font-extrabold text-sm rounded-md hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-[2px_2px_0_rgba(0,0,0,1)] border-2 border-topper-black cursor-pointer"
                                   >
                                     {language === 'hi' ? 'जमा करें' : 'Submit Answer'}
                                   </button>
@@ -606,7 +782,7 @@ export default function SuccessPage() {
                                           }
                                         })
                                       }}
-                                      className={`w-full text-left flex items-center gap-3 p-3 rounded border-2 transition-colors ${
+                                      className={`w-full text-left flex items-center gap-3 p-3 rounded-md border-2 transition-colors ${
                                         showResult
                                           ? isCorrect
                                             ? 'border-green-500 bg-green-500/10 cursor-default'
@@ -618,7 +794,7 @@ export default function SuccessPage() {
                                           : 'border-topper-graphite hover:border-topper-amber/80 cursor-pointer'
                                       }`}
                                     >
-                                      <div className={`w-5 h-5 flex-shrink-0 rounded border flex items-center justify-center transition-colors ${
+                                      <div className={`w-5 h-5 flex-shrink-0 rounded-md border flex items-center justify-center transition-colors ${
                                         showResult
                                           ? isCorrect
                                             ? 'border-green-500 bg-green-500 text-white'
@@ -631,7 +807,7 @@ export default function SuccessPage() {
                                       }`}>
                                         {isSelected && <span className="text-[10px]">✓</span>}
                                       </div>
-                                      <span className={`w-7 h-7 flex-shrink-0 rounded font-bold text-sm flex items-center justify-center transition-colors ${
+                                       <span className={`w-7 h-7 flex-shrink-0 rounded-md font-bold text-sm flex items-center justify-center transition-colors ${
                                         showResult
                                           ? isCorrect
                                             ? 'bg-green-500 text-white'
@@ -672,7 +848,7 @@ export default function SuccessPage() {
                                         setQuestionTimes(prev => ({ ...prev, [q.id]: activeQuestionTime }))
                                       }
                                     }}
-                                    className="px-5 py-2.5 bg-topper-amber text-topper-black font-extrabold text-sm rounded hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-40 disabled:hover:translate-y-0 transition-all shadow-[2px_2px_0_rgba(0,0,0,1)] border border-topper-black cursor-pointer"
+                                    className="px-5 py-2.5 bg-topper-amber text-topper-black font-extrabold text-sm rounded-md hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-40 disabled:hover:translate-y-0 transition-all shadow-[2px_2px_0_rgba(0,0,0,1)] border-2 border-topper-black cursor-pointer"
                                   >
                                     {language === 'hi' ? 'उत्तर जमा करें' : 'Submit Answer'}
                                   </button>
@@ -692,7 +868,7 @@ export default function SuccessPage() {
                                     key={key}
                                     disabled={showResult}
                                     onClick={() => handleSelectOption(q.id, key)}
-                                    className={`w-full text-left flex items-center gap-3 p-3 rounded border-2 transition-colors ${
+                                    className={`w-full text-left flex items-center gap-3 p-3 rounded-md border-2 transition-colors ${
                                       showResult
                                         ? isCorrect
                                           ? 'border-green-500 bg-green-500/10 cursor-default'
@@ -702,7 +878,7 @@ export default function SuccessPage() {
                                         : 'border-topper-graphite hover:border-topper-amber/80 cursor-pointer'
                                     }`}
                                   >
-                                    <span className={`w-7 h-7 flex-shrink-0 rounded font-bold text-sm flex items-center justify-center transition-colors ${
+                                    <span className={`w-7 h-7 flex-shrink-0 rounded-md font-bold text-sm flex items-center justify-center transition-colors ${
                                       showResult
                                         ? isCorrect
                                           ? 'bg-green-500 text-white'
@@ -780,6 +956,31 @@ export default function SuccessPage() {
                   )}
                 </motion.div>
               ))}
+
+              {/* Submit Test Button at the bottom of the list */}
+              {!isSubmitted && (
+                <motion.div
+                  className="no-print mt-20 mb-10 flex justify-center relative py-6"
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                >
+                  {/* Visual impact background glow */}
+                  <div className="absolute w-72 h-20 bg-[#f5a623]/10 rounded-full blur-2xl filter animate-pulse pointer-events-none" />
+
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setShowSubmitModal(true)}
+                    className="group relative px-16 py-5 bg-[#121212] text-topper-off-white hover:text-topper-amber border-2 border-topper-graphite hover:border-topper-amber rounded-lg shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer overflow-hidden tracking-wider select-none font-bold text-xl flex items-center gap-3"
+                  >
+                    <span className="text-2xl group-hover:scale-110 transition-transform duration-200">🚀</span>
+                    <span className="uppercase font-black tracking-widest">
+                      {language === 'hi' ? 'चुनौती पूर्ण करें' : 'Finish Challenge'}
+                    </span>
+                  </motion.button>
+                </motion.div>
+              )}
             </div>
           )}
 
@@ -822,7 +1023,7 @@ export default function SuccessPage() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={handlePrint}
-              className="flex items-center gap-2 px-8 py-4 bg-topper-amber text-topper-black font-black border-2 border-topper-amber rounded"
+              className="flex items-center gap-2 px-8 py-4 bg-topper-amber text-topper-black font-black border-2 border-topper-amber rounded-md"
             >
               <Download className="w-5 h-5" />
               {t('success.printDownload')}
@@ -832,7 +1033,7 @@ export default function SuccessPage() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={handleNewPaper}
-              className="flex items-center gap-2 px-8 py-4 bg-transparent text-topper-off-white font-bold border-2 border-topper-off-white hover:bg-topper-off-white hover:text-topper-black transition-colors rounded"
+              className="flex items-center gap-2 px-8 py-4 bg-transparent text-topper-off-white font-bold border-2 border-topper-off-white hover:bg-topper-off-white hover:text-topper-black transition-colors rounded-md"
             >
               {language === 'hi' ? 'दूसरा पेपर जनरेट करें' : 'Generate Another'}
               <ChevronRight className="w-5 h-5" />
@@ -841,6 +1042,82 @@ export default function SuccessPage() {
 
         </div>
       </div>
+
+      {/* Submit Confirmation Modal */}
+      <AnimatePresence>
+        {showSubmitModal && (
+          <div className="fixed inset-0 bg-[#0a0a0a]/90 backdrop-blur-md z-[9999] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 30 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 30 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+              className="bg-[#121212] border-2 border-topper-graphite p-8 rounded-lg shadow-2xl max-w-md w-full relative"
+            >
+              <h2 className="text-2xl font-black mb-2 uppercase tracking-tight text-topper-off-white flex items-center gap-2">
+                <span>📝</span> {language === 'hi' ? 'परीक्षा जमा करें?' : 'Submit Test?'}
+              </h2>
+              <div className="h-[1px] bg-topper-graphite/40 mb-6" />
+              
+              <div className="space-y-4 my-6 text-topper-off-white/80">
+                <p className="text-sm leading-relaxed">
+                  {language === 'hi'
+                    ? 'क्या आप सच में अपनी परीक्षा जमा करना चाहते हैं? कृपया अपने उत्तरों की समीक्षा कर लें।'
+                    : 'Are you sure you want to submit your practice test? Please review your progress below:'}
+                </p>
+                
+                <div className="p-4 bg-[#0a0a0a] border-2 border-topper-graphite rounded-md grid grid-cols-2 gap-4 text-center shadow-md">
+                  <div>
+                    <p className="text-[#a0a0a0] text-[10px] uppercase font-black tracking-widest">{language === 'hi' ? 'कुल प्रश्न' : 'Total Questions'}</p>
+                    <p className="text-3xl font-black text-white mt-1">{paper.questions.length}</p>
+                  </div>
+                  <div>
+                    <p className="text-[#a0a0a0] text-[10px] uppercase font-black tracking-widest">{language === 'hi' ? 'हल किए गए' : 'Answered'}</p>
+                    <p className="text-3xl font-black text-topper-amber mt-1">{Object.keys(selectedAnswers).length}</p>
+                  </div>
+                </div>
+
+                {Object.keys(selectedAnswers).length < paper.questions.length && (
+                  <div className="p-3 bg-[#2b1010] border-2 border-red-500 rounded-md flex items-start gap-2.5 shadow-md">
+                    <span className="text-red-500 text-lg">⚠️</span>
+                    <div>
+                      <p className="text-xs text-red-200 font-extrabold leading-tight">
+                        {language === 'hi' 
+                          ? `चेतावनी: आपने ${paper.questions.length - Object.keys(selectedAnswers).length} प्रश्नों का उत्तर नहीं दिया है!` 
+                          : `Warning: You have left ${paper.questions.length - Object.keys(selectedAnswers).length} questions unanswered!`}
+                      </p>
+                      <p className="text-[10px] text-red-300/80 mt-1">
+                        {language === 'hi' ? 'जमा करने के बाद आप उत्तर नहीं बदल पाएंगे।' : 'You cannot change your answers after submitting.'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-4 items-center justify-end mt-8 pt-4 border-t border-topper-graphite/40">
+                <button
+                  onClick={() => setShowSubmitModal(false)}
+                  className="px-5 py-2.5 bg-transparent hover:bg-topper-graphite/40 border-2 border-topper-graphite text-topper-off-white text-xs font-black uppercase tracking-wider rounded-md cursor-pointer transition-all active:translate-y-0.5"
+                >
+                  {language === 'hi' ? 'रद्द करें' : 'Cancel'}
+                </button>
+                <button
+                  onClick={() => {
+                    setIsSubmitted(true)
+                    setShowAnswers(true)
+                    setTimerActive(false)
+                    setActiveQuestionTimerRunning(false)
+                    setShowSubmitModal(false)
+                  }}
+                  className="px-6 py-2.5 bg-topper-amber hover:bg-white text-topper-black text-xs font-black uppercase tracking-wider border-2 border-topper-amber hover:border-white rounded-md transition-all cursor-pointer shadow-md"
+                >
+                  {language === 'hi' ? 'हाँ, जमा करें' : 'Yes, Submit'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </>
   )
 }

@@ -129,19 +129,19 @@ export default function SubjectsPage() {
                 />
               )}
 
-              <MangaPanel className="p-8 bg-gradient-to-br from-topper-charcoal to-topper-graphite h-full group-hover:from-topper-graphite group-hover:to-topper-charcoal transition-all duration-300">
+              <MangaPanel className="p-8 bg-[#121212] border-2 border-topper-graphite rounded-lg h-full group-hover:border-topper-amber transition-all duration-200 shadow-md">
                 {/* Icon */}
                 <div className="text-6xl mb-6 group-hover:scale-110 transition-transform duration-300">
                   {subject.icon}
                 </div>
 
                 {/* Subject Name */}
-                <h3 className="text-3xl font-black mb-2 group-hover:text-topper-amber transition-colors">
+                <h3 className="text-3xl font-black mb-2 group-hover:text-topper-amber transition-colors tracking-tight">
                   {subject.id === 'computer-science-and-application' ? t('subjects.cs') : subject.name}
                 </h3>
 
                 {/* Topics Count */}
-                <div className="mb-4 inline-block px-3 py-1 bg-topper-black border-2 border-topper-graphite rounded text-sm font-bold text-topper-amber">
+                <div className="mb-4 inline-block px-3 py-1.5 bg-topper-black border-2 border-topper-graphite rounded-md text-xs font-black uppercase tracking-wider text-topper-amber">
                   {subject.topics} {t('subjects.topicsCount')}
                 </div>
 
@@ -192,8 +192,8 @@ export default function SubjectsPage() {
                 className="text-center"
               >
                 <div className="text-4xl mb-3">{stat.icon}</div>
-                <p className="text-topper-graphite text-sm mb-1">{stat.label}</p>
-                <p className="text-2xl font-bold text-topper-amber">{stat.value}</p>
+                <p className="text-[#a0a0a0] text-xs uppercase font-extrabold tracking-widest mb-1">{stat.label}</p>
+                <p className="text-3xl font-black text-white mt-1">{stat.value}</p>
               </motion.div>
             ))}
           </div>

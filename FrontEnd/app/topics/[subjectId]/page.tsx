@@ -182,7 +182,7 @@ export default function TopicsPage() {
 
         {/* Network Visualization */}
         <motion.div
-          className="relative bg-topper-charcoal border-2 border-topper-graphite rounded-lg mb-12 aspect-[16/10] max-w-4xl mx-auto overflow-visible"
+          className="relative bg-[#121212] border-2 border-topper-graphite rounded-lg mb-12 aspect-[16/10] max-w-4xl mx-auto overflow-visible shadow-lg"
           style={{
             backgroundImage: 'radial-gradient(rgba(245, 166, 35, 0.07) 1.5px, transparent 1.5px)',
             backgroundSize: '24px 24px',
@@ -325,7 +325,7 @@ export default function TopicsPage() {
 
                     {/* The Label Tag (aligned left or right of the knob) */}
                     <div
-                      className={`absolute top-0 -mt-[18px] w-36 px-2.5 py-1.5 rounded border-2 transition-all duration-300 bg-[#121212]/95 select-none text-[10px] font-black shadow-[3px_3px_0_#000000] text-center leading-tight cursor-pointer ${
+                      className={`absolute top-0 -mt-[18px] w-36 px-2.5 py-1.5 rounded-md border-2 transition-all duration-300 bg-[#121212]/95 select-none text-[10px] font-black shadow-[3px_3px_0_#000000] text-center leading-tight cursor-pointer ${
                         isLeftSide 
                           ? 'right-6 mr-2' 
                           : 'left-6 ml-2'
@@ -369,7 +369,7 @@ export default function TopicsPage() {
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.8 }}
                     onClick={() => handleTopicToggle(topic)}
-                    className="px-4 py-2 bg-topper-amber text-topper-black font-bold rounded border-2 border-topper-amber hover:bg-topper-off-white transition-colors"
+                    className="px-4 py-2 bg-topper-amber text-topper-black font-bold rounded-md border-2 border-topper-amber hover:bg-topper-off-white transition-colors"
                   >
                     {topic} ×
                   </motion.button>
@@ -384,7 +384,7 @@ export default function TopicsPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.55 }}
-          className="mb-12 p-6 bg-topper-charcoal/30 border-2 border-topper-graphite/60 rounded-lg relative overflow-hidden backdrop-blur-md"
+          className="mb-12 p-6 bg-[#121212] border-2 border-topper-graphite rounded-lg relative overflow-hidden shadow-md"
         >
           <h3 className="text-xl font-black mb-4 tracking-tight text-topper-amber flex items-center gap-2">
             <span>⚙️</span> {t('topics.studyMaterials')}
@@ -401,8 +401,8 @@ export default function TopicsPage() {
               onClick={() => setIncludeNotes(!includeNotes)}
               className={`p-5 rounded-lg border-2 text-left flex items-start gap-4 transition-all duration-300 relative group overflow-hidden ${
                 includeNotes
-                  ? 'bg-gradient-to-br from-topper-amber/15 to-transparent border-topper-amber text-topper-amber shadow-[0_0_15px_rgba(245,166,35,0.15)]'
-                  : 'bg-topper-charcoal/40 border-topper-graphite/40 text-topper-off-white/70 hover:border-topper-amber/40 hover:text-topper-amber/80'
+                  ? 'bg-gradient-to-br from-topper-amber/10 to-transparent border-topper-amber text-topper-amber shadow-[0_0_15px_rgba(245,166,35,0.1)]'
+                  : 'bg-[#181818] border-topper-graphite text-topper-off-white/70 hover:border-topper-amber/40 hover:text-topper-amber/80'
               }`}
             >
               <div className="text-3xl p-2 bg-topper-black/50 border border-topper-graphite/30 rounded-md">
@@ -414,7 +414,7 @@ export default function TopicsPage() {
                   {t('topics.includeNotesDesc')}
                 </p>
               </div>
-              <div className={`mt-1 w-6 h-6 rounded flex items-center justify-center font-black text-sm border-2 transition-all duration-200 ${
+              <div className={`mt-1 w-6 h-6 rounded-md flex items-center justify-center font-black text-sm border-2 transition-all duration-200 ${
                 includeNotes 
                   ? 'border-topper-amber bg-topper-amber text-topper-black' 
                   : 'border-topper-graphite/60 bg-transparent'
@@ -430,8 +430,8 @@ export default function TopicsPage() {
               onClick={() => setIncludePyqs(!includePyqs)}
               className={`p-5 rounded-lg border-2 text-left flex items-start gap-4 transition-all duration-300 relative group overflow-hidden ${
                 includePyqs
-                  ? 'bg-gradient-to-br from-topper-amber/15 to-transparent border-topper-amber text-topper-amber shadow-[0_0_15px_rgba(245,166,35,0.15)]'
-                  : 'bg-topper-charcoal/40 border-topper-graphite/40 text-topper-off-white/70 hover:border-topper-amber/40 hover:text-topper-amber/80'
+                  ? 'bg-gradient-to-br from-topper-amber/10 to-transparent border-topper-amber text-topper-amber shadow-[0_0_15px_rgba(245,166,35,0.1)]'
+                  : 'bg-[#181818] border-topper-graphite text-topper-off-white/70 hover:border-topper-amber/40 hover:text-topper-amber/80'
               }`}
             >
               <div className="text-3xl p-2 bg-topper-black/50 border border-topper-graphite/30 rounded-md">
@@ -443,7 +443,7 @@ export default function TopicsPage() {
                   {t('topics.includePyqsDesc')}
                 </p>
               </div>
-              <div className={`mt-1 w-6 h-6 rounded flex items-center justify-center font-black text-sm border-2 transition-all duration-200 ${
+              <div className={`mt-1 w-6 h-6 rounded-md flex items-center justify-center font-black text-sm border-2 transition-all duration-200 ${
                 includePyqs 
                   ? 'border-topper-amber bg-topper-amber text-topper-black' 
                   : 'border-topper-graphite/60 bg-transparent'

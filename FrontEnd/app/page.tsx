@@ -321,7 +321,7 @@ export default function LandingPage() {
 
         {/* Desktop Nav Links & Action Button */}
         <div className="hidden lg:flex items-center gap-3">
-          <div className="flex items-center bg-topper-charcoal/50 rounded-full px-1.5 py-1 border border-topper-graphite/40">
+          <div className="flex items-center bg-topper-charcoal/50 rounded-md px-1.5 py-1 border border-topper-graphite/40">
             {[
               { name: t('nav.focus'), href: '/features/focus-dojo' },
               { name: t('nav.tasks'), href: '/features/task-quest' },
@@ -333,7 +333,7 @@ export default function LandingPage() {
               <Link
                 key={index}
                 href={link.href}
-                className="text-[13px] font-semibold text-topper-off-white/70 hover:text-topper-off-white hover:bg-topper-graphite/60 transition-all duration-200 px-4 py-1.5 rounded-full tracking-wide whitespace-nowrap"
+                className="text-[13px] font-semibold text-topper-off-white/70 hover:text-topper-off-white hover:bg-topper-graphite/60 transition-all duration-200 px-4 py-1.5 rounded-md tracking-wide whitespace-nowrap"
               >
                 {link.name}
               </Link>
@@ -344,13 +344,13 @@ export default function LandingPage() {
             <select
               value={language}
               onChange={(e) => setLanguage(e.target.value as 'en' | 'hi')}
-              className="bg-topper-charcoal border border-topper-graphite/40 text-topper-off-white text-xs font-semibold rounded-full px-3 py-1.5 focus:outline-none focus:border-topper-amber/70 cursor-pointer"
+              className="bg-topper-charcoal border border-topper-graphite/40 text-topper-off-white text-xs font-semibold rounded-md px-3 py-1.5 focus:outline-none focus:border-topper-amber/70 cursor-pointer"
             >
               <option value="en">English</option>
               <option value="hi">हिंदी (Hindi)</option>
             </select>
             <Link href="/subjects">
-              <button className="relative py-2 px-5 bg-topper-amber text-topper-black font-bold text-[13px] tracking-wide rounded-full shadow-[0_0_16px_rgba(245,166,35,0.3)] hover:shadow-[0_0_24px_rgba(245,166,35,0.5)] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer border border-topper-amber/80">
+              <button className="relative py-2 px-5 bg-topper-amber text-topper-black font-bold text-[13px] tracking-wide rounded-md shadow-[0_0_16px_rgba(245,166,35,0.2)] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 cursor-pointer border-2 border-topper-black">
                 {t('nav.start')}
               </button>
             </Link>
@@ -398,12 +398,12 @@ export default function LandingPage() {
                   </Link>
                 ))}
                 
-                <div className="flex items-center justify-between py-3 px-4 rounded-xl hover:bg-topper-graphite/30">
+                <div className="flex items-center justify-between py-3 px-4 rounded-md hover:bg-topper-graphite/30">
                   <span className="text-[15px] font-semibold text-topper-off-white/80">Language / भाषा</span>
                   <select
                     value={language}
                     onChange={(e) => setLanguage(e.target.value as 'en' | 'hi')}
-                    className="bg-topper-black border border-topper-graphite/60 text-topper-off-white text-xs font-semibold rounded-lg px-2.5 py-1 focus:outline-none cursor-pointer"
+                    className="bg-topper-black border border-topper-graphite/60 text-topper-off-white text-xs font-semibold rounded-md px-2.5 py-1 focus:outline-none cursor-pointer"
                   >
                     <option value="en">English</option>
                     <option value="hi">हिंदी</option>
@@ -412,7 +412,7 @@ export default function LandingPage() {
 
                 <div className="pt-3 mt-2 border-t border-topper-graphite/30">
                   <Link href="/subjects" onClick={() => setIsMobileMenuOpen(false)}>
-                    <button className="w-full py-3 bg-topper-amber text-topper-black font-bold text-sm rounded-xl shadow-[0_0_20px_rgba(245,166,35,0.3)] active:translate-y-0 text-center tracking-wide">
+                    <button className="w-full py-3 bg-topper-amber text-topper-black font-bold text-sm rounded-md shadow-[0_0_20px_rgba(245,166,35,0.2)] active:translate-y-0 text-center tracking-wide border-2 border-topper-black">
                       {t('nav.start')}
                     </button>
                   </Link>
@@ -543,7 +543,7 @@ export default function LandingPage() {
                 <MangaPanel
                   key={item.id}
                   delay={item.id * 0.08}
-                  className="w-full md:w-[calc(50%-1rem)] lg:w-[calc(33.333%-1.4rem)] group relative overflow-hidden bg-topper-charcoal/90 border-2 border-topper-graphite hover:border-topper-amber p-8 transition-all duration-300 rounded-2xl min-h-[350px] flex flex-col justify-between shadow-[4px_4px_0_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:translate-x-[-2px] hover:shadow-[8px_8px_0_rgba(0,0,0,1)]"
+                  className="w-full md:w-[calc(50%-1rem)] lg:w-[calc(33.333%-1.4rem)] group relative overflow-hidden bg-[#121212] border-2 border-topper-graphite hover:border-topper-amber p-8 transition-all duration-200 rounded-lg min-h-[350px] flex flex-col justify-between shadow-lg hover:shadow-xl hover:-translate-y-1"
                 >
                   {/* ID for navigation anchors */}
                   <div id={`feature-${item.id}`} className="absolute -top-24" />
@@ -552,12 +552,12 @@ export default function LandingPage() {
                   <div className="absolute inset-0 opacity-0 group-hover:opacity-5 transition-opacity duration-300 pointer-events-none bg-[radial-gradient(#f5a623_1px,transparent_1px)] [background-size:16px_16px]" />
                   
                   {/* Dotted border outline inside */}
-                  <div className="absolute inset-3.5 border border-dashed border-topper-graphite/40 group-hover:border-topper-amber/35 transition-colors pointer-events-none rounded-xl" />
+                  <div className="absolute inset-3.5 border border-dashed border-topper-graphite/40 group-hover:border-topper-amber/35 transition-colors pointer-events-none rounded-md" />
 
                   {/* Card Top Row: Icon container on left, release date on right */}
                   <div className="flex justify-between items-start relative z-10 w-full">
                     <div 
-                      className="w-12 h-12 rounded-xl flex items-center justify-center border-2 border-black/80 shadow-[2px_2px_0_rgba(0,0,0,1)] transition-transform group-hover:scale-105"
+                      className="w-12 h-12 rounded-md flex items-center justify-center border-2 border-black/80 shadow-[2px_2px_0_rgba(0,0,0,1)] transition-transform group-hover:scale-105"
                       style={{ backgroundColor: item.iconBg }}
                     >
                       {getIcon(item.icon)}
@@ -591,7 +591,7 @@ export default function LandingPage() {
                       </span>
                     </div>
                     <Link href={item.link}>
-                      <div className="flex items-center gap-1.5 text-xs font-black uppercase text-topper-graphite group-hover:text-topper-amber transition-colors cursor-pointer border border-topper-graphite/40 group-hover:border-topper-amber px-3 py-1.5 rounded bg-topper-black/60 shadow-[2px_2px_0_rgba(0,0,0,1)] active:translate-y-0 active:translate-x-0">
+                      <div className="flex items-center gap-1.5 text-xs font-black uppercase text-topper-graphite group-hover:text-topper-amber transition-colors cursor-pointer border border-topper-graphite/40 group-hover:border-topper-amber px-3 py-1.5 rounded-md bg-topper-black/60 shadow-[2px_2px_0_rgba(0,0,0,1)] active:translate-y-0 active:translate-x-0">
                         {item.isEmpty ? <Plus className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5 animate-pulse-glow" />}
                         <span>{actionText}</span>
                       </div>
@@ -643,7 +643,7 @@ export default function LandingPage() {
                 icon: '4' 
               },
             ].map((panel, index) => (
-              <MangaPanel key={index} delay={index * 0.15} className="p-6 bg-topper-charcoal">
+              <MangaPanel key={index} delay={index * 0.15} className="p-6 bg-[#121212] border-2 border-topper-graphite rounded-lg shadow-md hover:border-topper-amber transition-colors duration-200">
                 <div className="text-4xl mb-4 font-black text-topper-amber">{panel.icon}</div>
                 <h3 className="text-xl font-bold mb-2">{panel.title}</h3>
                 <p className="text-topper-off-white/70 text-sm">{panel.description}</p>

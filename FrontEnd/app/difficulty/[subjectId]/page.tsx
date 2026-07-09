@@ -157,7 +157,7 @@ export default function DifficultyPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
-          className="mb-12 p-6 bg-topper-charcoal border-2 border-topper-graphite rounded shadow-[4px_4px_0_rgba(0,0,0,1)]"
+          className="mb-12 p-6 bg-[#121212] border-2 border-topper-graphite rounded-lg shadow-[4px_4px_0_rgba(0,0,0,1)]"
         >
           <h2 className="text-xl font-black mb-4 uppercase tracking-wider text-topper-amber">
             {language === 'hi' ? 'चरण 1: प्रश्नों की संख्या चुनें' : 'Step 1: Choose Number of Questions'}
@@ -172,7 +172,7 @@ export default function DifficultyPage() {
                   whileHover={{ scale: 1.05, y: -2 }}
                   whileTap={{ scale: 0.95 }}
                   animate={{ scale: isSelected ? 1.05 : 1 }}
-                  className={`relative px-6 py-3 font-black border-2 rounded transition-all cursor-pointer ${
+                  className={`relative px-6 py-3 font-black border-2 rounded-md transition-all cursor-pointer ${
                     isSelected
                       ? 'border-topper-black text-topper-black shadow-[4px_4px_0_rgba(0,0,0,1)] z-10'
                       : 'border-topper-graphite text-topper-off-white hover:border-topper-amber shadow-none'
@@ -181,7 +181,7 @@ export default function DifficultyPage() {
                   {isSelected && (
                     <motion.div
                       layoutId="activeQuestionBg"
-                      className="absolute inset-0 bg-topper-amber -z-10"
+                      className="absolute inset-0 bg-topper-amber -z-10 rounded-md"
                       transition={{ type: 'spring', stiffness: 300, damping: 22 }}
                     />
                   )}
@@ -192,7 +192,7 @@ export default function DifficultyPage() {
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
                         transition={{ type: 'spring', stiffness: 400, damping: 15 }}
-                        className="text-[11px] bg-topper-black text-topper-amber px-1.5 py-0.5 rounded font-black"
+                        className="text-[11px] bg-topper-black text-topper-amber px-1.5 py-0.5 rounded-md font-black"
                       >
                         ✓
                       </motion.span>
@@ -209,7 +209,7 @@ export default function DifficultyPage() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.55 }}
-          className="mb-12 p-6 bg-topper-charcoal border-2 border-topper-graphite rounded shadow-[4px_4px_0_rgba(0,0,0,1)]"
+          className="mb-12 p-6 bg-[#121212] border-2 border-topper-graphite rounded-lg shadow-[4px_4px_0_rgba(0,0,0,1)]"
         >
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
             <h2 className="text-xl font-black uppercase tracking-wider text-topper-amber">
@@ -217,7 +217,7 @@ export default function DifficultyPage() {
             </h2>
             <button
               onClick={() => setIsTimerEnabled(!isTimerEnabled)}
-              className={`px-4 py-2 font-bold rounded border-2 transition-all ${
+              className={`px-4 py-2 font-bold rounded-md border-2 transition-all ${
                 isTimerEnabled
                   ? 'bg-red-500 border-red-500 text-white shadow-[2px_2px_0_rgba(0,0,0,1)] hover:bg-red-600 hover:border-red-600'
                   : 'border-topper-graphite text-topper-off-white hover:border-topper-amber'
@@ -254,7 +254,7 @@ export default function DifficultyPage() {
                         whileHover={{ scale: 1.05, y: -2 }}
                         whileTap={{ scale: 0.95 }}
                         animate={{ scale: isSelected ? 1.05 : 1 }}
-                        className={`relative px-4 py-2 text-sm font-black border-2 rounded transition-all cursor-pointer ${
+                        className={`relative px-4 py-2 text-sm font-black border-2 rounded-md transition-all cursor-pointer ${
                           isSelected
                             ? 'border-topper-black text-topper-black shadow-[4px_4px_0_rgba(0,0,0,1)] z-10'
                             : 'border-topper-graphite text-topper-off-white hover:border-topper-amber shadow-none'
@@ -263,7 +263,7 @@ export default function DifficultyPage() {
                         {isSelected && (
                           <motion.div
                             layoutId="activeTimeLimitBg"
-                            className="absolute inset-0 bg-topper-amber -z-10"
+                            className="absolute inset-0 bg-topper-amber -z-10 rounded-md"
                             transition={{ type: 'spring', stiffness: 300, damping: 22 }}
                           />
                         )}
@@ -274,7 +274,7 @@ export default function DifficultyPage() {
                               initial={{ scale: 0 }}
                               animate={{ scale: 1 }}
                               transition={{ type: 'spring', stiffness: 400, damping: 15 }}
-                              className="text-[10px] bg-topper-black text-topper-amber px-1.5 py-0.5 rounded font-black"
+                              className="text-[10px] bg-topper-black text-topper-amber px-1.5 py-0.5 rounded-md font-black"
                             >
                               ✓
                             </motion.span>
@@ -330,10 +330,10 @@ export default function DifficultyPage() {
                   />
                 )}
 
-                <MangaPanel className="p-8 bg-gradient-to-br from-topper-charcoal to-topper-graphite h-full group-hover:from-topper-graphite group-hover:to-topper-charcoal transition-all duration-300">
+                <MangaPanel className="p-8 bg-[#121212] border-2 border-topper-graphite rounded-lg h-full group-hover:border-topper-amber transition-all duration-200 shadow-md">
                   {/* Challenge Meter */}
                   <div className="mb-6">
-                    <div className="challenge-meter">
+                    <div className="challenge-meter rounded-md overflow-hidden">
                       <motion.div
                         className="challenge-meter-fill"
                         initial={{ width: '0%' }}
@@ -359,7 +359,7 @@ export default function DifficultyPage() {
                   </div>
 
                   {/* Questions Count */}
-                  <div className="mb-4 p-3 bg-topper-black border-2 border-topper-graphite rounded">
+                  <div className="mb-4 p-3 bg-topper-black border-2 border-topper-graphite rounded-md">
                     <p className="text-topper-graphite text-xs mb-1">{t('success.stats.questions')}</p>
                     <p className="text-2xl font-black text-topper-amber">{selectedQuestionCount}</p>
                   </div>
