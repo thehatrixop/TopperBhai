@@ -23,6 +23,7 @@ import {
   ChevronRight
 } from 'lucide-react'
 import { useLanguage } from '@/lib/LanguageContext'
+import { GradingResultSkeleton } from '@/components/Skeleton'
 
 interface RubricEval {
   criterion: string
@@ -194,6 +195,8 @@ export default function GradingDojoPage() {
       }
 
       const data = await response.json()
+      // Simulate artificial delay to see the skeleton loading
+      await new Promise(resolve => setTimeout(resolve, 2000))
       setGradingResult(data)
 
       // Scroll to results
@@ -704,6 +707,8 @@ export default function GradingDojoPage() {
           </div>
         )}
 
+        {loading && <GradingResultSkeleton />}
+        
         {/* Grading Results Analysis Dashboard */}
         <AnimatePresence>
           {gradingResult && !loading && (

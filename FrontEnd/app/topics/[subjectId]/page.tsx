@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { OwlSpeech, ComicActionButton, NetworkNode } from '@/components/manga-ui'
 import { ChevronRight } from 'lucide-react'
 import { useLanguage } from '@/lib/LanguageContext'
+import { TopicsPageSkeleton } from '@/components/Skeleton'
 
 // Topics are fetched dynamically from the backend database using the subject ID / slug.
 
@@ -30,6 +31,9 @@ export default function TopicsPage() {
         )
 
         const data = await response.json()
+
+        // Simulate artificial delay to see the skeleton loading
+        await new Promise(resolve => setTimeout(resolve, 2000))
 
         setSubject({
           id: subjectId,
@@ -72,11 +76,7 @@ export default function TopicsPage() {
   }, [subject])
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-topper-black text-topper-off-white flex items-center justify-center">
-        <p>{language === 'hi' ? 'लोड हो रहा है...' : 'Loading...'}</p>
-      </div>
-    )
+    return <TopicsPageSkeleton />
   }
   if (!subject) {
     return (

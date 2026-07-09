@@ -6,9 +6,10 @@ import { Send, Bot, User, Sparkles, Loader2 } from 'lucide-react'
 
 interface Question {
   id: number
+  type?: 'mcq' | 'msq' | 'fitb' | 'assertion_reason' | 'matching'
   topic: string
   question: string
-  options: {
+  options?: {
     A: string
     B: string
     C: string
@@ -16,6 +17,10 @@ interface Question {
   }
   correct_answer: string
   explanation: string
+  assertion?: string
+  reason?: string
+  list_i?: Record<string, string>
+  list_ii?: Record<string, string>
 }
 
 interface QuestionChatProps {
@@ -31,12 +36,22 @@ export default function QuestionChat({ question, selectedAnswer }: QuestionChatP
 
   // Seed the initial tutor message
   useEffect(() => {
+    const isMsq = question.type === 'msq'
+    const isFitb = question.type === 'fitb'
+    
+    let tutorGreeting = ''
+    if (isFitb) {
+      tutorGreeting = `Hi there! I am your TopperBhai AI Tutor. I notice you entered **"${selectedAnswer}"** for this fill-in-the-blank question, while the correct answer is **"${question.correct_answer}"**.\n\nLet's review this together. Where did you run into difficulty, or would you like me to walk you through the correct conceptual logic step-by-step?`
+    } else if (isMsq) {
+      tutorGreeting = `Hi there! I am your TopperBhai AI Tutor. I notice you chose option(s) **${selectedAnswer}** for this question, while the correct answer is **${question.correct_answer}**.\n\nLet's review this together. Where did you run into difficulty, or would you like me to walk you through the correct conceptual logic step-by-step?`
+    } else {
+      tutorGreeting = `Hi there! I am your TopperBhai AI Tutor. I notice you chose option **${selectedAnswer}** for this question, while the correct answer is **${question.correct_answer}**.\n\nLet's review this together. Where did you run into difficulty, or would you like me to walk you through the correct logic step-by-step?`
+    }
+
     setMessages([
       {
         role: 'assistant',
-        content: `Hi there! I am your TopperBhai AI Tutor. I notice you chose option **${selectedAnswer}** for this question, while the correct answer is **${question.correct_answer}**.
-
-Let's review this together. Where did you run into difficulty, or would you like me to walk you through the correct conceptual logic step-by-step?`
+        content: tutorGreeting
       }
     ])
   }, [question, selectedAnswer])
@@ -77,7 +92,12 @@ Let's review this together. Where did you run into difficulty, or would you like
           history: updatedHistory.slice(1).map(msg => ({
             role: msg.role,
             content: msg.content
-          }))
+          })),
+          type: question.type,
+          assertion: question.assertion,
+          reason: question.reason,
+          list_i: question.list_i,
+          list_ii: question.list_ii,
         })
       })
 

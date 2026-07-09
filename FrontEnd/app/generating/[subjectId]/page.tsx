@@ -40,6 +40,7 @@ export default function GeneratingPage() {
   const questions    = searchParams.get('questions') || '10'
   const includeNotes = searchParams.get('notes') !== 'false'
   const includePyqs   = searchParams.get('pyqs') !== 'false'
+  const timeLimit    = searchParams.get('timeLimit') || 'none'
   const { language, setLanguage, t } = useLanguage()
 
   const localizedSteps = [
@@ -107,6 +108,7 @@ export default function GeneratingPage() {
           challenge,
           question_count: data.question_count,
           subject_id:    subjectId,
+          timeLimit,
         }))
 
         console.log(`✅ Paper ready: ${data.question_count} questions generated`)

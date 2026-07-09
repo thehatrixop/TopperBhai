@@ -6,13 +6,19 @@ class ChatMessage(BaseModel):
     content: str
 
 class ChatRequest(BaseModel):
-    question: str
-    options: Dict[str, str]
+    question: Optional[str] = None
+    options: Optional[Dict[str, str]] = None
     correct_answer: str
     selected_answer: str
     explanation: str
     message: str
     history: List[ChatMessage] = []
+    type: Optional[str] = None
+    assertion: Optional[str] = None
+    reason: Optional[str] = None
+    list_i: Optional[Dict[str, str]] = None
+    list_ii: Optional[Dict[str, str]] = None
+
 
 class GrammarMessage(BaseModel):
     role: str  # "user" or "assistant"

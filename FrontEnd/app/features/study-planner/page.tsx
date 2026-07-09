@@ -18,9 +18,11 @@ import {
   FileText,
   Calendar,
   Sparkles,
-  BookOpen
+  BookOpen,
+  Loader2
 } from 'lucide-react'
 import { useLanguage } from '@/lib/LanguageContext'
+import { StudyPlanSkeleton } from '@/components/Skeleton'
 
 interface StudyTask {
   id: string
@@ -127,6 +129,8 @@ export default function StudyPlannerPage() {
       }
 
       const planData = await response.json()
+      // Simulate artificial delay to see the step progression & skeleton loading
+      await new Promise(resolve => setTimeout(resolve, 4000))
       planData.plan_id = `plan_${Date.now()}`
       planData.reminder_time = reminderTime
       planData.sync_task_quest = syncTaskQuest
@@ -542,29 +546,32 @@ export default function StudyPlannerPage() {
                   </h1>
                 </div>
 
-                <MangaPanel className="bg-topper-charcoal/90 border-2 border-topper-off-white p-6 shadow-[5px_5px_0_#1a1a1a]">
-                  <h2 className="text-lg font-black uppercase text-topper-amber mb-6 tracking-wider border-b border-topper-graphite/60 pb-3 flex items-center gap-2">
-                    <Sparkles className="w-5 h-5" />
-                    {t('planner.form.title')}
-                  </h2>
-
-                  {isLoading ? (
-                    
-                    // Loading progression sequence
-                    <div className="py-12 space-y-8 flex flex-col items-center justify-center">
-                      <div className="w-16 h-16 border-4 border-topper-amber border-t-transparent rounded-full animate-spin" />
-                      <div className="text-center space-y-2 max-w-sm">
-                        <p className="text-lg font-black text-topper-amber uppercase tracking-widest animate-pulse">
+                {isLoading ? (
+                  <div className="space-y-6">
+                    {/* Step progression progress banner */}
+                    <div className="bg-topper-charcoal border-2 border-topper-graphite rounded-xl p-5 flex items-center gap-4 shadow-[4px_4px_0_rgba(0,0,0,1)] relative select-none">
+                      <div className="absolute inset-1.5 border border-dashed border-topper-graphite/40 pointer-events-none rounded-lg" />
+                      <Loader2 className="w-6 h-6 text-topper-amber animate-spin relative z-10" />
+                      <div className="space-y-0.5 relative z-10">
+                        <p className="text-[11px] font-black text-topper-amber uppercase tracking-wider">
                           {t('planner.form.generating')}
                         </p>
-                        <p className="text-sm font-semibold text-topper-off-white/60 min-h-[20px] transition-all">
+                        <p className="text-xs font-semibold text-topper-off-white/80 transition-all">
                           {loadingSteps[genStep]}
                         </p>
                       </div>
                     </div>
-                  ) : (
                     
-                    // Input Form Fields
+                    <StudyPlanSkeleton />
+                  </div>
+                ) : (
+                  <MangaPanel className="bg-topper-charcoal/90 border-2 border-topper-off-white p-6 shadow-[5px_5px_0_#1a1a1a]">
+                    <h2 className="text-lg font-black uppercase text-topper-amber mb-6 tracking-wider border-b border-topper-graphite/60 pb-3 flex items-center gap-2">
+                      <Sparkles className="w-5 h-5" />
+                      {t('planner.form.title')}
+                    </h2>
+
+                    {/* Input Form Fields */}
                     <form onSubmit={handleGeneratePlan} className="space-y-4">
                       
                       {/* Exam Name */}
@@ -600,7 +607,7 @@ export default function StudyPlannerPage() {
                           </select>
                         </div>
 
-                        {/* Duration */}
+                        {/* Duration Months */}
                         <div className="space-y-1.5">
                           <label className="block text-xs font-bold text-topper-off-white/70 uppercase tracking-widest font-mono">
                             {t('planner.form.duration')}
@@ -610,8 +617,8 @@ export default function StudyPlannerPage() {
                             onChange={(e) => setDurationMonths(Number(e.target.value))}
                             className="w-full bg-topper-black border border-topper-graphite text-topper-off-white px-3 py-2.5 text-sm focus:outline-none focus:border-topper-amber rounded"
                           >
-                            {[1, 2, 3, 4, 6, 9, 12].map(m => (
-                              <option key={m} value={m}>{m} {language === 'hi' ? 'महीने' : 'Months'}</option>
+                            {[1, 2, 3, 4, 6, 8, 12].map(m => (
+                              <option key={m} value={m}>{m} {m === 1 ? (language === 'hi' ? 'महीना' : 'month') : (language === 'hi' ? 'महीने' : 'months')}</option>
                             ))}
                           </select>
                         </div>
@@ -620,14 +627,14 @@ export default function StudyPlannerPage() {
                       {/* Priority Subjects */}
                       <div className="space-y-1.5">
                         <label className="block text-xs font-bold text-topper-off-white/70 uppercase tracking-widest font-mono">
-                          {t('planner.form.priority')}
+                          {t('planner.form.subjects')}
                         </label>
                         <input
                           type="text"
                           required
                           value={prioritySubjects}
                           onChange={(e) => setPrioritySubjects(e.target.value)}
-                          placeholder={t('planner.form.priority.placeholder')}
+                          placeholder={t('planner.form.subjects.placeholder')}
                           className="w-full bg-topper-black border border-topper-graphite text-topper-off-white px-3 py-2.5 text-sm focus:outline-none focus:border-topper-amber focus:ring-1 focus:ring-topper-amber rounded"
                         />
                       </div>
@@ -685,8 +692,8 @@ export default function StudyPlannerPage() {
                         </button>
                       </div>
                     </form>
-                  )}
-                </MangaPanel>
+                  </MangaPanel>
+                )}
               </motion.div>
             ) : (
               

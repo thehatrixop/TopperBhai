@@ -8,33 +8,72 @@ router = APIRouter()
 def analyze_mistake(request: ChatRequest):
     client = get_cerebras_client()
     
-    # Format options
-    options_formatted = "\n".join([f"  - ({k}) {v}" for k, v in request.options.items()])
+    # Format the question context based on the type
+    q_type = request.type or "mcq"
     
+    question_context = ""
+    if q_type == "assertion_reason":
+        question_context = (
+            f"- TYPE: Assertion-Reason\n"
+            f"- ASSERTION (A): {request.assertion}\n"
+            f"- REASON (R): {request.reason}\n"
+        )
+        if request.options:
+            opts_formatted = "\n".join([f"  - ({k}) {v}" for k, v in request.options.items()])
+            question_context += f"- OPTIONS:\n{opts_formatted}\n"
+    elif q_type == "matching":
+        list_i_formatted = "\n".join([f"  {k}. {v}" for k, v in request.list_i.items()]) if request.list_i else ""
+        list_ii_formatted = "\n".join([f"  {k}. {v}" for k, v in request.list_ii.items()]) if request.list_ii else ""
+        opts_formatted = "\n".join([f"  - ({k}) {v}" for k, v in request.options.items()]) if request.options else ""
+        question_context = (
+            f"- TYPE: Matching Lists\n"
+            f"- QUESTION: {request.question}\n"
+            f"- LIST I:\n{list_i_formatted}\n"
+            f"- LIST II:\n{list_ii_formatted}\n"
+            f"- OPTIONS (Pairings):\n{opts_formatted}\n"
+        )
+    elif q_type == "fitb":
+        question_context = (
+            f"- TYPE: Fill in the Blanks\n"
+            f"- QUESTION: {request.question}\n"
+        )
+    elif q_type == "msq":
+        opts_formatted = "\n".join([f"  - ({k}) {v}" for k, v in request.options.items()]) if request.options else ""
+        question_context = (
+            f"- TYPE: Multiple Select Question (MSQ)\n"
+            f"- QUESTION: {request.question}\n"
+            f"- OPTIONS:\n{opts_formatted}\n"
+        )
+    else: # mcq or other
+        opts_formatted = "\n".join([f"  - ({k}) {v}" for k, v in request.options.items()]) if request.options else ""
+        question_context = (
+            f"- TYPE: Multiple Choice Question (MCQ)\n"
+            f"- QUESTION: {request.question}\n"
+            f"- OPTIONS:\n{opts_formatted}\n"
+        )
+        
     # Customize system prompt based on whether they answered correctly or not
-    if request.selected_answer == request.correct_answer:
+    if request.selected_answer.strip().lower() == request.correct_answer.strip().lower():
         outcome_focus = (
-            f"The student answered correctly by choosing option {request.selected_answer}. "
+            f"The student answered correctly by choosing {request.selected_answer}. "
             "Congratulate them briefly, help them solidify their understanding, or answer their questions about "
             "alternative approaches or other options."
         )
     else:
         outcome_focus = (
-            f"The student chose option {request.selected_answer}, which is INCORRECT. "
-            f"The correct option is {request.correct_answer}. "
-            f"Explain why their choice is incorrect, analyze their conceptual mistake, and guide them clearly "
-            f"towards the correct logic behind option {request.correct_answer}."
+            f"The student chose {request.selected_answer}, which is INCORRECT. "
+            f"The correct answer is {request.correct_answer}. "
+            f"Explain why their choice/input is incorrect, analyze their conceptual mistake, and guide them clearly "
+            f"towards the correct logic behind the correct answer."
         )
         
     system_content = f"""You are "TopperBhai AI Tutor", an encouraging, highly knowledgeable, and empathetic personal academic tutor. 
 A student has generated a practice exam and is reviewing a question they answered. 
 
 Here is the exact question context:
-- QUESTION: {request.question}
-- OPTIONS:
-{options_formatted}
-- CORRECT OPTION: {request.correct_answer}
-- STUDENT'S SELECTED OPTION: {request.selected_answer}
+{question_context}
+- CORRECT ANSWER: {request.correct_answer}
+- STUDENT'S SELECTED ANSWER: {request.selected_answer}
 - ORIGINAL EXPLANATION: {request.explanation}
 
 Your Focus:

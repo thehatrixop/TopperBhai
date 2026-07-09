@@ -30,6 +30,7 @@ import {
   Wand2
 } from 'lucide-react'
 import { useLanguage } from '@/lib/LanguageContext'
+import { ScribeResultSkeleton } from '@/components/Skeleton'
 
 interface Correction {
   original_part: string
@@ -322,6 +323,8 @@ export default function ScribeDojoPage() {
       }
 
       const data = await response.json()
+      // Simulate artificial delay to see the skeleton loading
+      await new Promise(resolve => setTimeout(resolve, 2000))
       setCheckResponse(data)
       
       // Initialize chat coach welcome message
@@ -742,6 +745,8 @@ export default function ScribeDojoPage() {
                   </div>
                 </div>
               )}
+
+              {loading && <ScribeResultSkeleton />}
 
               {/* Results Analysis Dashboard */}
               <AnimatePresence>

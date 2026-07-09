@@ -17,10 +17,15 @@ interface Option {
 interface Question {
   id: number
   topic: string
+  type?: 'mcq' | 'msq' | 'fitb' | 'assertion_reason' | 'matching'
   question: string
-  options: Option
+  options?: Option
   correct_answer: string
   explanation: string
+  assertion?: string
+  reason?: string
+  list_i?: Record<string, string>
+  list_ii?: Record<string, string>
 }
 
 interface PaperData {
@@ -29,6 +34,7 @@ interface PaperData {
   challenge: string
   question_count: number
   subject_id: string
+  timeLimit?: string
 }
 
 const CHALLENGE_LABELS: Record<string, string> = {
@@ -47,6 +53,10 @@ export default function SuccessPage() {
   const [showAnswers, setShowAnswers]   = useState(false)
   const [expandedId, setExpandedId]     = useState<number | null>(null)
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, string>>({})
+  const [tempSelections, setTempSelections]   = useState<Record<number, string[]>>({})
+  const [tempFitbInputs, setTempFitbInputs]   = useState<Record<number, string>>({})
+  const [isChallengeStarted, setIsChallengeStarted] = useState(false)
+  const [timeRemaining, setTimeRemaining]           = useState<number>(0)
   const [timeElapsed, setTimeElapsed]   = useState(0)
   const [timerActive, setTimerActive]   = useState(false)
 
@@ -116,12 +126,43 @@ export default function SuccessPage() {
     const raw = localStorage.getItem('paperData')
     if (raw) {
       try {
-        setPaper(JSON.parse(raw))
+        const parsed = JSON.parse(raw)
+        setPaper(parsed)
+        if (parsed.timeLimit && parsed.timeLimit !== 'none') {
+          setTimeRemaining(Number(parsed.timeLimit))
+          setIsChallengeStarted(false)
+          setTimerActive(false)
+        } else {
+          setIsChallengeStarted(true)
+          setTimerActive(true)
+        }
       } catch {
         console.error('Failed to parse paper data')
       }
     }
   }, [])
+
+  // Timer challenge countdown countdown effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null
+    if (timerActive && isChallengeStarted && paper?.timeLimit && paper.timeLimit !== 'none') {
+      interval = setInterval(() => {
+        setTimeRemaining(prev => {
+          if (prev <= 1) {
+            if (interval) clearInterval(interval)
+            setTimerActive(false)
+            setShowAnswers(true) // Auto-submit
+            alert(language === 'hi' ? 'समय समाप्त! आपका अभ्यास पत्र स्वतः जमा कर दिया गया है।' : "Time's up! Your practice paper has been auto-submitted.")
+            return 0
+          }
+          return prev - 1
+        })
+      }, 1000)
+    }
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [timerActive, isChallengeStarted, paper?.timeLimit, language])
 
   const handlePrint = () => {
     window.print()
@@ -152,6 +193,12 @@ export default function SuccessPage() {
     }
     return sum + val
   }, 0) + (expandedId !== null && !selectedAnswers[expandedId] ? activeQuestionTime : 0)
+
+  const typeCounts = paper.questions.reduce((acc, q) => {
+    const qType = q.type || 'mcq'
+    acc[qType] = (acc[qType] || 0) + 1
+    return acc
+  }, {} as Record<string, number>)
 
   return (
     <>
@@ -296,215 +343,505 @@ export default function SuccessPage() {
               </h1>
 
               {/* Stats */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 p-6 bg-topper-charcoal border-2 border-topper-graphite rounded">
-                <div>
-                  <p className="text-topper-graphite text-xs mb-1">{t('success.stats.questions')}</p>
-                  <p className="text-3xl font-black text-topper-amber">{paper.questions.length}</p>
-                </div>
-                <div>
-                  <p className="text-topper-graphite text-xs mb-1">{t('success.stats.topics')}</p>
-                  <p className="text-sm font-bold text-topper-off-white leading-tight">{paper.topics.join(', ')}</p>
-                </div>
-                <div>
-                  <p className="text-topper-graphite text-xs mb-1">{t('success.stats.difficulty')}</p>
-                  <p className="text-sm font-black text-topper-amber capitalize">
-                    {t(`success.stats.${paper.challenge}` as any) || paper.challenge}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-topper-graphite text-xs mb-1">{language === 'hi' ? 'लिया गया समय' : 'TIME TAKEN'}</p>
-                  <p className={`text-3xl font-black font-mono transition-colors ${activeQuestionTimerRunning ? 'text-topper-amber animate-pulse' : 'text-topper-off-white'}`}>
-                    {formatElapsed(totalActiveSolveTime)}
-                  </p>
+              <div className="mb-8 p-6 bg-topper-charcoal border-2 border-topper-graphite rounded flex flex-col gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-topper-graphite text-xs mb-1">{t('success.stats.questions')}</p>
+                    <p className="text-3xl font-black text-topper-amber">{paper.questions.length}</p>
+                  </div>
+                  <div>
+                    <p className="text-topper-graphite text-xs mb-1">{t('success.stats.topics')}</p>
+                    <p className="text-sm font-bold text-topper-off-white leading-tight">{paper.topics.join(', ')}</p>
+                  </div>
+                  <div>
+                    <p className="text-topper-graphite text-xs mb-1">{t('success.stats.difficulty')}</p>
+                    <p className="text-sm font-black text-topper-amber capitalize">
+                      {t(`success.stats.${paper.challenge}` as any) || paper.challenge}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-topper-graphite text-xs mb-1">
+                      {paper.timeLimit && paper.timeLimit !== 'none'
+                        ? (language === 'hi' ? 'शेष समय' : 'TIME REMAINING')
+                        : (language === 'hi' ? 'लिया गया समय' : 'TIME TAKEN')
+                      }
+                    </p>
+                    <p className={`text-3xl font-black font-mono transition-colors ${
+                      paper.timeLimit && paper.timeLimit !== 'none'
+                        ? timeRemaining < 30 ? 'text-red-500 animate-pulse' : 'text-topper-amber'
+                        : activeQuestionTimerRunning ? 'text-topper-amber animate-pulse' : 'text-topper-off-white'
+                    }`}>
+                      {paper.timeLimit && paper.timeLimit !== 'none'
+                        ? formatElapsed(timeRemaining)
+                        : formatElapsed(totalActiveSolveTime)
+                      }
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
           </motion.div>
 
-          {/* ── Questions ── */}
-          <div className="space-y-6">
-            {paper.questions.map((q, index) => (
-              <motion.div
-                key={q.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: Math.min(index * 0.04, 1) }}
-                className="question-card bg-topper-charcoal border-2 border-topper-graphite rounded-lg overflow-hidden"
-              >
-                {/* Question header */}
-                <div
-                  className="p-5 cursor-pointer no-print"
-                  onClick={() => {
-                    const targetId = q.id
-                    if (expandedId === targetId) {
-                      setExpandedId(null)
-                      setActiveQuestionTimerRunning(false)
-                      // Save accumulated time when collapsing
-                      if (!selectedAnswers[targetId]) {
-                        setQuestionTimes(prev => ({
-                          ...prev,
-                          [targetId]: activeQuestionTime
-                        }))
-                      }
-                    } else {
-                      // Save progress of the previous active question before switching
-                      if (expandedId !== null && !selectedAnswers[expandedId]) {
-                        const prevId = expandedId
-                        const prevTime = activeQuestionTime
-                        setQuestionTimes(prev => ({
-                          ...prev,
-                          [prevId]: prevTime
-                        }))
-                      }
-                      
-                      setExpandedId(targetId)
-                      if (!selectedAnswers[targetId]) {
-                        // Resume from previously accumulated time if present, else 0
-                        setActiveQuestionTime(questionTimes[targetId] || 0)
-                        setActiveQuestionTimerRunning(true)
-                      } else {
-                        setActiveQuestionTimerRunning(false)
-                      }
-                    }
-                  }}
-                >
-                  <div className="flex items-start gap-4 justify-between">
-                    <div className="flex items-start gap-4 flex-1">
-                      <span className="flex-shrink-0 w-8 h-8 bg-topper-amber text-topper-black rounded font-black text-sm flex items-center justify-center">
-                        {index + 1}
-                      </span>
-                      <div className="flex-1">
-                        <p className="text-xs text-topper-graphite mb-1 uppercase tracking-wider">{q.topic}</p>
-                        <p className="font-medium leading-relaxed">{q.question}</p>
-                      </div>
-                    </div>
+          {/* ── Questions or Start Challenge Splash ── */}
+          {!isChallengeStarted && paper.timeLimit && paper.timeLimit !== 'none' ? (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="p-8 md:p-12 bg-gradient-to-br from-topper-charcoal to-topper-graphite border-2 border-topper-graphite rounded-lg text-center shadow-[4px_4px_0_rgba(0,0,0,1)] relative overflow-hidden"
+            >
+              {/* Premium comic/manga design element */}
+              <div className="absolute top-0 right-0 w-24 h-24 bg-topper-amber text-topper-black flex items-center justify-center font-black text-xs uppercase rotate-45 translate-x-8 -translate-y-8 tracking-widest shadow border-l border-b border-topper-black">
+                Timed!
+              </div>
 
-                    {/* Question Timer Indicator on the right hand side */}
-                    <div className="flex-shrink-0 ml-4 self-center select-none">
-                      {expandedId === q.id && !selectedAnswers[q.id] && (
-                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-topper-amber/10 border border-topper-amber/30 text-topper-amber text-xs font-mono font-black rounded-md animate-pulse">
-                          <Clock className="w-3.5 h-3.5" />
-                          <span>{formatElapsed(activeQuestionTime)}</span>
+              <div className="w-20 h-20 bg-red-500/10 border-2 border-red-500 text-red-500 rounded-full flex items-center justify-center text-4xl font-bold mx-auto mb-6 animate-pulse">
+                ⏱
+              </div>
+              <h2 className="text-3xl md:text-4xl font-black mb-4 uppercase tracking-tighter text-topper-off-white">
+                {language === 'hi' ? 'समयबद्ध चुनौती सक्रिय!' : 'Timer Challenge Active!'}
+              </h2>
+              <p className="text-topper-off-white/70 max-w-md mx-auto mb-8 text-sm md:text-base leading-relaxed">
+                {language === 'hi'
+                  ? `यह अभ्यास पत्र ${Math.round(Number(paper.timeLimit) / 60)} मिनट की समय सीमा के साथ सेट किया गया है। एक बार शुरू होने पर, घड़ी उलटी चलेगी और समय पूरा होने पर पेपर अपने आप जमा हो जाएगा।`
+                  : `This practice paper is set with a time limit of ${Math.round(Number(paper.timeLimit) / 60)} minutes. Once started, the countdown will begin and the paper will auto-submit when the timer hits zero.`}
+              </p>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => {
+                  setIsChallengeStarted(true)
+                  setTimerActive(true)
+                }}
+                className="px-8 py-4 bg-topper-amber text-topper-black font-black text-lg border-2 border-topper-black rounded shadow-[4px_4px_0_rgba(0,0,0,1)] transition-transform inline-flex items-center gap-2 cursor-pointer"
+              >
+                {language === 'hi' ? 'चुनौती शुरू करें' : 'Start Challenge'}
+                <ChevronRight className="w-5 h-5" />
+              </motion.button>
+            </motion.div>
+          ) : (
+            <div className="space-y-6">
+              {paper.questions.map((q, index) => (
+                <motion.div
+                  key={q.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(index * 0.04, 1) }}
+                  className="question-card bg-topper-charcoal border-2 border-topper-graphite rounded-lg overflow-hidden"
+                >
+                  {/* Question header */}
+                  <div
+                    className="p-5 cursor-pointer no-print"
+                    onClick={() => {
+                      const targetId = q.id
+                      if (expandedId === targetId) {
+                        setExpandedId(null)
+                        setActiveQuestionTimerRunning(false)
+                        // Save accumulated time when collapsing
+                        if (!selectedAnswers[targetId]) {
+                          setQuestionTimes(prev => ({
+                            ...prev,
+                            [targetId]: activeQuestionTime
+                          }))
+                        }
+                      } else {
+                        // Save progress of the previous active question before switching
+                        if (expandedId !== null && !selectedAnswers[expandedId]) {
+                          const prevId = expandedId
+                          const prevTime = activeQuestionTime
+                          setQuestionTimes(prev => ({
+                            ...prev,
+                            [prevId]: prevTime
+                          }))
+                        }
+                        
+                        setExpandedId(targetId)
+                        if (!selectedAnswers[targetId]) {
+                          // Resume from previously accumulated time if present, else 0
+                          setActiveQuestionTime(questionTimes[targetId] || 0)
+                          setActiveQuestionTimerRunning(true)
+                        } else {
+                          setActiveQuestionTimerRunning(false)
+                        }
+                      }
+                    }}
+                  >
+                    <div className="flex items-start gap-4 justify-between">
+                      <div className="flex items-start gap-4 flex-1">
+                        <span className="flex-shrink-0 w-8 h-8 bg-topper-amber text-topper-black rounded font-black text-sm flex items-center justify-center">
+                          {index + 1}
+                        </span>
+                        <div className="flex-1">
+                          <p className="text-xs text-topper-graphite mb-1 uppercase tracking-wider">
+                            {q.topic}
+                            {q.type && (
+                              <span className="text-topper-amber ml-2 font-bold bg-topper-amber/10 border border-topper-amber/20 px-1.5 py-0.5 rounded text-[10px]">
+                                {q.type.toUpperCase().replace('_', ' ')}
+                              </span>
+                            )}
+                          </p>
+                          <p className="font-medium leading-relaxed">
+                            {q.type === 'assertion_reason'
+                              ? (q.question || (language === 'hi' ? 'नीचे दो कथन दिए गए हैं, एक को अभिकथन (A) और दूसरे को कारण (R) के रूप में लेबल किया गया है:' : 'Given below are two statements, one is labelled as Assertion (A) and the other is labelled as Reason (R):'))
+                              : q.question
+                            }
+                          </p>
+
+                          {/* Assertion/Reason custom statements in header */}
+                          {q.type === 'assertion_reason' && (
+                            <div className="mt-3 space-y-2 border-l-4 border-topper-amber pl-3.5 py-1">
+                              <p className="text-sm"><span className="font-extrabold text-topper-amber">Assertion (A):</span> {q.assertion}</p>
+                              <p className="text-sm"><span className="font-extrabold text-topper-amber">Reason (R):</span> {q.reason}</p>
+                            </div>
+                          )}
+
+                          {/* Matching list custom grid in header */}
+                          {q.type === 'matching' && (
+                            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4 bg-topper-black/40 p-4 border border-topper-graphite/40 rounded-lg">
+                              <div>
+                                <h4 className="text-xs font-extrabold text-topper-amber mb-2 uppercase tracking-widest">List I</h4>
+                                <div className="space-y-1.5">
+                                  {q.list_i && Object.entries(q.list_i).map(([num, val]) => (
+                                    <div key={num} className="text-sm bg-topper-charcoal/40 px-3 py-1.5 rounded border border-topper-graphite/20 flex gap-2">
+                                      <span className="font-bold text-topper-amber">{num}.</span>
+                                      <span>{val}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                              <div>
+                                <h4 className="text-xs font-extrabold text-topper-amber mb-2 uppercase tracking-widest">List II</h4>
+                                <div className="space-y-1.5">
+                                  {q.list_ii && Object.entries(q.list_ii).map(([roman, val]) => (
+                                    <div key={roman} className="text-sm bg-topper-charcoal/40 px-3 py-1.5 rounded border border-topper-graphite/20 flex gap-2">
+                                      <span className="font-bold text-topper-amber">{roman}.</span>
+                                      <span>{val}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      )}
-                      {selectedAnswers[q.id] && questionTimes[q.id] !== undefined && (
-                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-topper-graphite/20 border border-topper-graphite/60 text-topper-graphite text-xs font-mono font-bold rounded-md">
-                          <Clock className="w-3.5 h-3.5 animate-none" />
-                          <span>{formatElapsed(questionTimes[q.id])}</span>
-                        </div>
-                      )}
+                      </div>
+
+                      {/* Question Timer Indicator on the right hand side */}
+                      <div className="flex-shrink-0 ml-4 self-center select-none">
+                        {expandedId === q.id && !selectedAnswers[q.id] && (
+                          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-topper-amber/10 border border-topper-amber/30 text-topper-amber text-xs font-mono font-black rounded-md animate-pulse">
+                            <Clock className="w-3.5 h-3.5" />
+                            <span>{formatElapsed(activeQuestionTime)}</span>
+                          </div>
+                        )}
+                        {selectedAnswers[q.id] && questionTimes[q.id] !== undefined && (
+                          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-topper-graphite/20 border border-topper-graphite/60 text-topper-graphite text-xs font-mono font-bold rounded-md">
+                            <Clock className="w-3.5 h-3.5 animate-none" />
+                            <span>{formatElapsed(questionTimes[q.id])}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Print version always shows question */}
-                <div className="print-only p-5">
-                  <p className="font-bold mb-3">Q{index + 1}. {q.question}</p>
-                </div>
-
-                {/* Options — always visible on screen if expanded or showAnswers, always visible on print */}
-                <AnimatePresence>
-                  {(expandedId === q.id || showAnswers) && (
-                    <motion.div
-                      key="options"
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.25 }}
-                      className="no-print"
-                    >
-                      <div className="px-5 pb-5 space-y-2">
-                        {OPTION_KEYS.map(key => {
-                          const isCorrect = key === q.correct_answer
-                          const selectedOption = selectedAnswers[q.id]
-                          const showResult = showAnswers || !!selectedOption
-                          const isSelected = key === selectedOption
-
-                          return (
-                            <button
-                              key={key}
-                              disabled={showResult}
-                              onClick={() => handleSelectOption(q.id, key)}
-                              className={`w-full text-left flex items-center gap-3 p-3 rounded border-2 transition-colors ${
-                                showResult
-                                  ? isCorrect
-                                    ? 'border-green-500 bg-green-500/10 cursor-default'
-                                    : isSelected
-                                    ? 'border-red-500 bg-red-500/10 cursor-default'
-                                    : 'border-topper-graphite/30 opacity-60 cursor-default'
-                                  : 'border-topper-graphite hover:border-topper-amber/80 cursor-pointer'
-                              }`}
-                            >
-                              <span className={`w-7 h-7 flex-shrink-0 rounded font-bold text-sm flex items-center justify-center transition-colors ${
-                                showResult
-                                  ? isCorrect
-                                    ? 'bg-green-500 text-white'
-                                    : isSelected
-                                    ? 'bg-red-500 text-white'
-                                    : 'bg-topper-graphite text-topper-off-white opacity-60'
-                                  : 'bg-topper-graphite text-topper-off-white'
-                              }`}>
-                                {key}
-                              </span>
-                              <span className="text-sm text-topper-off-white">{q.options[key]}</span>
-                              {showResult && isCorrect && (
-                                <CheckCircle className="w-4 h-4 text-green-500 ml-auto flex-shrink-0" />
-                              )}
-                              {showResult && isSelected && !isCorrect && (
-                                <XCircle className="w-4 h-4 text-red-500 ml-auto flex-shrink-0" />
-                              )}
-                            </button>
-                          )
-                        })}
-
-                        {/* Explanation */}
-                        {(showAnswers || !!selectedAnswers[q.id]) && q.explanation && (
-                          <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ delay: 0.1 }}
-                            className="mt-3 p-3 bg-topper-black border-l-4 border-topper-amber rounded-r text-sm text-topper-off-white/80"
-                          >
-                            {selectedAnswers[q.id] && (
-                              <div className="mb-2 text-xs font-bold">
-                                {selectedAnswers[q.id] === q.correct_answer ? (
-                                  <span className="text-green-400 flex items-center gap-1.5">
-                                    <CheckCircle className="w-3.5 h-3.5 inline" /> {language === 'hi' ? 'सही! बहुत बढ़िया।' : 'Correct! Well done.'}
-                                  </span>
-                                ) : (
-                                  <span className="text-red-400 flex items-center gap-1.5">
-                                    <XCircle className="w-3.5 h-3.5 inline" /> {language === 'hi' ? `गलत। सही उत्तर ${q.correct_answer} है।` : `Incorrect. The correct answer is ${q.correct_answer}.`}
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                            <span className="text-topper-amber font-bold">{t('success.explanation')}: </span>
-                            {q.explanation}
-                          </motion.div>
-                        )}
-
-                        {selectedAnswers[q.id] && selectedAnswers[q.id] !== q.correct_answer && (
-                          <QuestionChat
-                            question={q}
-                            selectedAnswer={selectedAnswers[q.id]}
-                          />
-                        )}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Print options — always shown on paper */}
-                <div className="print-only px-5 pb-5 space-y-1">
-                  {OPTION_KEYS.map(key => (
-                    <p key={key} className="text-sm">
-                      ({key}) {q.options[key]}
+                  {/* Print version always shows question */}
+                  <div className="print-only p-5">
+                    <p className="font-bold mb-3">
+                      Q{index + 1}. {q.type === 'assertion_reason'
+                        ? (q.question || (language === 'hi' ? 'नीचे दो कथन दिए गए हैं, एक को अभिकथन (A) और दूसरे को कारण (R) के रूप में लेबल किया गया है:' : 'Given below are two statements, one is labelled as Assertion (A) and the other is labelled as Reason (R):'))
+                        : q.question
+                      }
                     </p>
-                  ))}
-                </div>
-              </motion.div>
-            ))}
-          </div>
+                    {q.type === 'assertion_reason' && (
+                      <div className="space-y-1.5 mb-3 pl-4 border-l-2 border-black">
+                        <p className="text-sm"><span className="font-bold">Assertion (A):</span> {q.assertion}</p>
+                        <p className="text-sm"><span className="font-bold">Reason (R):</span> {q.reason}</p>
+                      </div>
+                    )}
+                    {q.type === 'matching' && (
+                      <div className="grid grid-cols-2 gap-4 mb-3 pl-4 border-l-2 border-black">
+                        <div>
+                          <p className="text-xs font-bold uppercase mb-1">List I</p>
+                          {q.list_i && Object.entries(q.list_i).map(([num, val]) => (
+                            <p key={num} className="text-xs">{num}. {val}</p>
+                          ))}
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold uppercase mb-1">List II</p>
+                          {q.list_ii && Object.entries(q.list_ii).map(([roman, val]) => (
+                            <p key={roman} className="text-xs">{roman}. {val}</p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Options — always visible on screen if expanded or showAnswers, always visible on print */}
+                  <AnimatePresence>
+                    {(expandedId === q.id || showAnswers) && (
+                      <motion.div
+                        key="options"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.25 }}
+                        className="no-print"
+                      >
+                        <div className="px-5 pb-5 space-y-2">
+                          {q.type === 'fitb' ? (
+                            <div className="space-y-3">
+                              {!selectedAnswers[q.id] && !showAnswers ? (
+                                <div className="flex gap-3">
+                                  <input
+                                    type="text"
+                                    value={tempFitbInputs[q.id] || ''}
+                                    onChange={(e) => setTempFitbInputs(prev => ({ ...prev, [q.id]: e.target.value }))}
+                                    placeholder={language === 'hi' ? 'अपना उत्तर यहाँ लिखें...' : 'Type your answer...'}
+                                    className="flex-1 bg-topper-black border border-topper-graphite text-topper-off-white text-sm px-4 py-2.5 rounded focus:outline-none focus:border-topper-amber/60 placeholder-topper-graphite transition-colors"
+                                  />
+                                  <button
+                                    onClick={() => {
+                                      const val = (tempFitbInputs[q.id] || '').trim()
+                                      if (!val) return
+                                      setSelectedAnswers(prev => ({ ...prev, [q.id]: val }))
+                                      
+                                      // Stop active question timer and save the elapsed duration
+                                      if (expandedId === q.id) {
+                                        setActiveQuestionTimerRunning(false)
+                                        setQuestionTimes(prev => ({ ...prev, [q.id]: activeQuestionTime }))
+                                      }
+                                    }}
+                                    className="px-5 py-2.5 bg-topper-amber text-topper-black font-extrabold text-sm rounded hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-[2px_2px_0_rgba(0,0,0,1)] border border-topper-black cursor-pointer"
+                                  >
+                                    {language === 'hi' ? 'जमा करें' : 'Submit Answer'}
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="p-3 bg-topper-black/40 border border-topper-graphite/40 rounded flex flex-col gap-1.5 text-sm">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-topper-graphite">{language === 'hi' ? 'आपका उत्तर:' : 'Your Answer:'}</span>
+                                    <span className={`font-bold ${
+                                      selectedAnswers[q.id]?.trim().toLowerCase() === q.correct_answer.trim().toLowerCase()
+                                        ? 'text-green-400'
+                                        : 'text-red-400'
+                                    }`}>
+                                      {selectedAnswers[q.id] || (language === 'hi' ? '[कोई उत्तर नहीं]' : '[No Answer]')}
+                                    </span>
+                                    {selectedAnswers[q.id] && selectedAnswers[q.id].trim().toLowerCase() === q.correct_answer.trim().toLowerCase() ? (
+                                      <CheckCircle className="w-4 h-4 text-green-500" />
+                                    ) : (
+                                      <XCircle className="w-4 h-4 text-red-500" />
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-topper-graphite">{language === 'hi' ? 'सही उत्तर:' : 'Correct Answer:'}</span>
+                                    <span className="font-extrabold text-green-400">{q.correct_answer}</span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ) : q.type === 'msq' ? (
+                            <div className="space-y-3">
+                              <div className="space-y-2">
+                                {OPTION_KEYS.map(key => {
+                                  const correctKeys = q.correct_answer.split(',').map(s => s.trim())
+                                  const selectedOption = selectedAnswers[q.id]
+                                  const selectedKeys = (selectedOption || '').split(',').map(s => s.trim()).filter(Boolean)
+                                  const showResult = showAnswers || !!selectedOption
+                                  
+                                  const isCorrect = correctKeys.includes(key)
+                                  const isSelected = showResult 
+                                    ? selectedKeys.includes(key)
+                                    : (tempSelections[q.id] || []).includes(key)
+
+                                  return (
+                                    <button
+                                      key={key}
+                                      disabled={showResult}
+                                      onClick={() => {
+                                        setTempSelections(prev => {
+                                          const current = prev[q.id] || []
+                                          if (current.includes(key)) {
+                                            return { ...prev, [q.id]: current.filter(k => k !== key) }
+                                          } else {
+                                            return { ...prev, [q.id]: [...current, key] }
+                                          }
+                                        })
+                                      }}
+                                      className={`w-full text-left flex items-center gap-3 p-3 rounded border-2 transition-colors ${
+                                        showResult
+                                          ? isCorrect
+                                            ? 'border-green-500 bg-green-500/10 cursor-default'
+                                            : isSelected
+                                            ? 'border-red-500 bg-red-500/10 cursor-default'
+                                            : 'border-topper-graphite/30 opacity-60 cursor-default'
+                                          : isSelected
+                                          ? 'border-topper-amber bg-topper-amber/10 cursor-pointer'
+                                          : 'border-topper-graphite hover:border-topper-amber/80 cursor-pointer'
+                                      }`}
+                                    >
+                                      <div className={`w-5 h-5 flex-shrink-0 rounded border flex items-center justify-center transition-colors ${
+                                        showResult
+                                          ? isCorrect
+                                            ? 'border-green-500 bg-green-500 text-white'
+                                            : isSelected
+                                            ? 'border-red-500 bg-red-500 text-white'
+                                            : 'border-topper-graphite/40 opacity-60'
+                                          : isSelected
+                                          ? 'border-topper-amber bg-topper-amber text-topper-black font-extrabold'
+                                          : 'border-topper-graphite'
+                                      }`}>
+                                        {isSelected && <span className="text-[10px]">✓</span>}
+                                      </div>
+                                      <span className={`w-7 h-7 flex-shrink-0 rounded font-bold text-sm flex items-center justify-center transition-colors ${
+                                        showResult
+                                          ? isCorrect
+                                            ? 'bg-green-500 text-white'
+                                            : isSelected
+                                            ? 'bg-red-500 text-white'
+                                            : 'bg-topper-graphite text-topper-off-white opacity-60'
+                                          : isSelected
+                                          ? 'bg-topper-amber text-topper-black'
+                                          : 'bg-topper-graphite text-topper-off-white'
+                                      }`}>
+                                        {key}
+                                      </span>
+                                      <span className="text-sm text-topper-off-white">{q.options?.[key]}</span>
+                                      {showResult && isCorrect && (
+                                        <CheckCircle className="w-4 h-4 text-green-500 ml-auto flex-shrink-0" />
+                                      )}
+                                      {showResult && isSelected && !isCorrect && (
+                                        <XCircle className="w-4 h-4 text-red-500 ml-auto flex-shrink-0" />
+                                      )}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                              
+                              {!selectedAnswers[q.id] && !showAnswers && (
+                                <div className="flex justify-end">
+                                  <button
+                                    disabled={!(tempSelections[q.id] && tempSelections[q.id].length > 0)}
+                                    onClick={() => {
+                                      const selected = tempSelections[q.id] || []
+                                      if (selected.length === 0) return
+                                      const finalAns = [...selected].sort().join(',')
+                                      setSelectedAnswers(prev => ({ ...prev, [q.id]: finalAns }))
+                                      
+                                      // Stop active question timer and save the elapsed duration
+                                      if (expandedId === q.id) {
+                                        setActiveQuestionTimerRunning(false)
+                                        setQuestionTimes(prev => ({ ...prev, [q.id]: activeQuestionTime }))
+                                      }
+                                    }}
+                                    className="px-5 py-2.5 bg-topper-amber text-topper-black font-extrabold text-sm rounded hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-40 disabled:hover:translate-y-0 transition-all shadow-[2px_2px_0_rgba(0,0,0,1)] border border-topper-black cursor-pointer"
+                                  >
+                                    {language === 'hi' ? 'उत्तर जमा करें' : 'Submit Answer'}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              {OPTION_KEYS.map(key => {
+                                const isCorrect = key === q.correct_answer
+                                const selectedOption = selectedAnswers[q.id]
+                                const showResult = showAnswers || !!selectedOption
+                                const isSelected = key === selectedOption
+
+                                return (
+                                  <button
+                                    key={key}
+                                    disabled={showResult}
+                                    onClick={() => handleSelectOption(q.id, key)}
+                                    className={`w-full text-left flex items-center gap-3 p-3 rounded border-2 transition-colors ${
+                                      showResult
+                                        ? isCorrect
+                                          ? 'border-green-500 bg-green-500/10 cursor-default'
+                                          : isSelected
+                                          ? 'border-red-500 bg-red-500/10 cursor-default'
+                                          : 'border-topper-graphite/30 opacity-60 cursor-default'
+                                        : 'border-topper-graphite hover:border-topper-amber/80 cursor-pointer'
+                                    }`}
+                                  >
+                                    <span className={`w-7 h-7 flex-shrink-0 rounded font-bold text-sm flex items-center justify-center transition-colors ${
+                                      showResult
+                                        ? isCorrect
+                                          ? 'bg-green-500 text-white'
+                                          : isSelected
+                                          ? 'bg-red-500 text-white'
+                                          : 'bg-topper-graphite text-topper-off-white opacity-60'
+                                        : 'bg-topper-graphite text-topper-off-white'
+                                    }`}>
+                                      {key}
+                                    </span>
+                                    <span className="text-sm text-topper-off-white">{q.options?.[key]}</span>
+                                    {showResult && isCorrect && (
+                                      <CheckCircle className="w-4 h-4 text-green-500 ml-auto flex-shrink-0" />
+                                    )}
+                                    {showResult && isSelected && !isCorrect && (
+                                      <XCircle className="w-4 h-4 text-red-500 ml-auto flex-shrink-0" />
+                                    )}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
+
+                          {/* Explanation */}
+                          {(showAnswers || !!selectedAnswers[q.id]) && q.explanation && (
+                            <motion.div
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              transition={{ delay: 0.1 }}
+                              className="mt-3 p-3 bg-topper-black border-l-4 border-topper-amber rounded-r text-sm text-topper-off-white/80"
+                            >
+                              {selectedAnswers[q.id] && (
+                                <div className="mb-2 text-xs font-bold">
+                                  {selectedAnswers[q.id].trim().toLowerCase() === q.correct_answer.trim().toLowerCase() ? (
+                                    <span className="text-green-400 flex items-center gap-1.5">
+                                      <CheckCircle className="w-3.5 h-3.5 inline" /> {language === 'hi' ? 'सही! बहुत बढ़िया।' : 'Correct! Well done.'}
+                                    </span>
+                                  ) : (
+                                    <span className="text-red-400 flex items-center gap-1.5">
+                                      <XCircle className="w-3.5 h-3.5 inline" /> {language === 'hi' ? `गलत। सही उत्तर ${q.correct_answer} है।` : `Incorrect. The correct answer is ${q.correct_answer}.`}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              <span className="text-topper-amber font-bold">{t('success.explanation')}: </span>
+                              {q.explanation}
+                            </motion.div>
+                          )}
+
+                          {selectedAnswers[q.id] && selectedAnswers[q.id].trim().toLowerCase() !== q.correct_answer.trim().toLowerCase() && (
+                            <QuestionChat
+                              question={q}
+                              selectedAnswer={selectedAnswers[q.id]}
+                            />
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {/* Print options — always shown on paper */}
+                  {q.type !== 'fitb' && (
+                    <div className="print-only px-5 pb-5 space-y-1">
+                      {OPTION_KEYS.map(key => (
+                        <p key={key} className="text-sm">
+                          ({key}) {q.options?.[key]}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                  {q.type === 'fitb' && (
+                    <div className="print-only px-5 pb-5">
+                      <p className="text-sm text-gray-500">{language === 'hi' ? 'उत्तर:' : 'Answer:'} ____________________________________</p>
+                    </div>
+                  )}
+                </motion.div>
+              ))}
+            </div>
+          )}
 
           {/* ── Answer key (print only) ── */}
           <div className="answer-key">

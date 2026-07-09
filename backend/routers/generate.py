@@ -24,10 +24,10 @@ VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 # Challenge id → human difficulty label
 DIFFICULTY_MAP = {
-    "rookie":      "Easy — basic recall, definitions and simple concepts",
-    "practice":    "Medium — application of concepts, standard exam-style questions",
-    "competitive": "Hard — advanced analysis, multi-step reasoning",
-    "topper":      "Expert — comprehensive, GATE / competitive exam level",
+    "rookie":      "65% Easy questions (basic recall, definitions and simple concepts) + 25% Medium questions (application of concepts, standard exam-style questions) + 10% Hard questions (advanced analysis, multi-step reasoning)",
+    "practice":    "50% Easy questions (basic recall, definitions and simple concepts) + 30% Medium questions (application of concepts, standard exam-style questions) + 20% Hard questions (advanced analysis, multi-step reasoning)",
+    "competitive": "40% Easy questions (basic recall, definitions and simple concepts) + 35% Medium questions (application of concepts, standard exam-style questions) + 25% Hard questions (advanced analysis, multi-step reasoning)",
+    "topper":      "35% Easy questions (basic recall, definitions and simple concepts) + 35% Medium questions (application of concepts, standard exam-style questions) + 30% Hard/Expert questions (comprehensive, GATE / competitive exam level)",
 }
 
 # ── Groq client (vision only) ────────────────────────────────────────────────
@@ -180,40 +180,108 @@ def generate_questions_with_ai(
 
     difficulty_desc = DIFFICULTY_MAP.get(challenge, f"{challenge} difficulty")
 
-    system_prompt = """You are an expert exam question paper creator for aptitude and academic exams.
-Generate high-quality multiple choice questions (MCQs) based ONLY on the provided study material.
+    system_prompt = """You are an expert exam question paper creator for aptitude and academic exams, specializing in UGC NET formats.
+Generate high-quality questions based ONLY on the provided study material. 
 
 STRICT RULES:
 1. Generate EXACTLY the number of questions requested — no more, no less.
-2. Each question must have exactly 4 options labelled A, B, C, D.
-3. Exactly one option must be correct.
-4. Base every question strictly on the provided study material.
-5. Distribute questions proportionally across all topics.
-6. Return ONLY valid JSON — no markdown, no extra text.
-7. Standalone Questions: NEVER mention terms like "according to the study material", "given definitions", "notes", "document", "provided text", or "material" in the questions, options, or explanations. Write them as standard, standalone exam questions.
-8. Provide clear, detailed explanations for the correct answer to help students learn.
+2. Distribute questions proportionally across all topics.
+3. Return ONLY valid JSON — no markdown, no extra text.
+4. Standalone Questions: NEVER mention terms like "according to the study material", "given definitions", "notes", "document", "provided text", or "material". Write them as standard, standalone exam questions.
+5. Generate a balanced mix of the following 5 question types (approximately 20% of each type):
+   - "mcq" (Multiple Choice Question, single correct option A/B/C/D)
+   - "msq" (Multiple Select Question, one or more correct options from A/B/C/D, e.g. "A,C")
+   - "fitb" (Fill in the Blanks, question text must contain "_____" and user types the answer)
+   - "assertion_reason" (Two statements: Assertion (A) and Reason (R), with standard option keys A/B/C/D)
+   - "matching" (Match List I numbered 1, 2, 3, 4 with List II numbered I, II, III, IV, with option keys A/B/C/D representing pairing codes)
+
+6. Provide clear, detailed explanations for the correct answer to help students learn.
 
 OUTPUT FORMAT (return this exact structure):
 {
   "questions": [
     {
       "id": 1,
+      "type": "mcq",
       "topic": "topic name here",
-      "question": "question text here",
+      "question": "Which of the following is correct?",
       "options": {
-        "A": "option A text",
-        "B": "option B text",
-        "C": "option C text",
-        "D": "option D text"
+        "A": "Option A text",
+        "B": "Option B text",
+        "C": "Option C text",
+        "D": "Option D text"
       },
       "correct_answer": "A",
-      "explanation": "brief explanation of the correct answer"
+      "explanation": "Detailed explanation here"
+    },
+    {
+      "id": 2,
+      "type": "msq",
+      "topic": "topic name here",
+      "question": "Which of the following are properties of X? (Select all that apply)",
+      "options": {
+        "A": "Property A",
+        "B": "Property B",
+        "C": "Property C",
+        "D": "Property D"
+      },
+      "correct_answer": "A,C",
+      "explanation": "Detailed explanation here"
+    },
+    {
+      "id": 3,
+      "type": "fitb",
+      "topic": "topic name here",
+      "question": "The processor register that holds the address of the next instruction is the _____.",
+      "correct_answer": "Program Counter",
+      "explanation": "Detailed explanation here"
+    },
+    {
+      "id": 4,
+      "type": "assertion_reason",
+      "topic": "topic name here",
+      "assertion": "The clock rate of CPU is not the only metric for its performance.",
+      "reason": "Instruction pipeline latency and memory hierarchy affect execution times.",
+      "options": {
+        "A": "Both (A) and (R) are true and (R) is the correct explanation of (A)",
+        "B": "Both (A) and (R) are true but (R) is not the correct explanation of (A)",
+        "C": "(A) is true but (R) is false",
+        "D": "(A) is false but (R) is true"
+      },
+      "correct_answer": "A",
+      "explanation": "Detailed explanation here"
+    },
+    {
+      "id": 5,
+      "type": "matching",
+      "topic": "topic name here",
+      "question": "Match the protocols in List I with their default port numbers in List II:",
+      "list_i": {
+        "1": "HTTP",
+        "2": "HTTPS",
+        "3": "FTP",
+        "4": "SMTP"
+      },
+      "list_ii": {
+        "I": "21",
+        "II": "25",
+        "III": "80",
+        "IV": "443"
+      },
+      "options": {
+        "A": "1-III, 2-IV, 3-I, 4-II",
+        "B": "1-I, 2-II, 3-III, 4-IV",
+        "C": "1-IV, 2-III, 3-II, 4-I",
+        "D": "1-III, 2-I, 3-IV, 4-II"
+      },
+      "correct_answer": "A",
+      "explanation": "Detailed explanation here"
     }
   ]
 }"""
 
     user_prompt = (
-        f"Generate exactly {question_count} MCQ questions.\n"
+        f"Generate exactly {question_count} questions of mixed types (MCQ, MSQ, FITB, Assertion-Reason, Matching).\n"
         f"Difficulty: {difficulty_desc}\n"
         f"Topics: {', '.join(topics)}\n\n"
         f"STUDY MATERIAL:\n{knowledge_context}\n\n"
@@ -278,37 +346,64 @@ OUTPUT FORMAT (return this exact structure):
 def _shuffle_options_for_questions(questions: list[dict]) -> list[dict]:
     """Shuffles the options A, B, C, D for each question and updates correct_answer accordingly."""
     for q in questions:
+        q_type = q.get("type", "mcq")
+        if q_type == "fitb" or q_type == "assertion_reason":
+            continue
+
         options = q.get("options")
         correct_answer_key = q.get("correct_answer")
-        
-        if not options or not correct_answer_key or correct_answer_key not in options:
+
+        if not options or not correct_answer_key:
             continue
-            
-        # Extract the actual correct text
-        correct_text = options[correct_answer_key]
-        
-        # Get all options as a list of values and shuffle them
-        option_values = list(options.values())
-        random.shuffle(option_values)
-        
-        # Re-assign to A, B, C, D
-        new_options = {
-            "A": option_values[0],
-            "B": option_values[1],
-            "C": option_values[2],
-            "D": option_values[3]
-        }
-        
-        # Find the new key for the correct answer
-        new_correct_key = None
-        for k, v in new_options.items():
-            if v == correct_text:
-                new_correct_key = k
-                break
-                
-        q["options"] = new_options
-        q["correct_answer"] = new_correct_key
-        
+
+        if q_type == "msq":
+            # correct_answer_key is comma-separated e.g. "A,C"
+            correct_keys = [k.strip() for k in correct_answer_key.split(",") if k.strip()]
+            correct_texts = [options[k] for k in correct_keys if k in options]
+
+            # Shuffle all options
+            option_values = list(options.values())
+            random.shuffle(option_values)
+
+            new_options = {
+                "A": option_values[0],
+                "B": option_values[1],
+                "C": option_values[2],
+                "D": option_values[3]
+            }
+
+            new_correct_keys = []
+            for k, v in new_options.items():
+                if v in correct_texts:
+                    new_correct_keys.append(k)
+
+            new_correct_keys.sort()
+            q["options"] = new_options
+            q["correct_answer"] = ",".join(new_correct_keys)
+
+        else: # MCQ or Matching
+            if correct_answer_key not in options:
+                continue
+            correct_text = options[correct_answer_key]
+            option_values = list(options.values())
+            random.shuffle(option_values)
+
+            new_options = {
+                "A": option_values[0],
+                "B": option_values[1],
+                "C": option_values[2],
+                "D": option_values[3]
+            }
+
+            new_correct_key = None
+            for k, v in new_options.items():
+                if v == correct_text:
+                    new_correct_key = k
+                    break
+
+            q["options"] = new_options
+            q["correct_answer"] = new_correct_key
+
     # Finally, shuffle the order of the questions themselves so topics are mixed
     random.shuffle(questions)
     return questions

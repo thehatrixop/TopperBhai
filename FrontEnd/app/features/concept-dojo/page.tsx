@@ -22,6 +22,7 @@ import {
   ChevronRight
 } from 'lucide-react'
 import { useLanguage } from '@/lib/LanguageContext'
+import { ConceptDojoSkeleton } from '@/components/Skeleton'
 
 interface VideoRecommendation {
   video_id: string
@@ -91,6 +92,8 @@ export default function ConceptDojoPage() {
       }
 
       const data: RecommendResponse = await response.json()
+      // Simulate artificial delay to see the skeleton loading
+      await new Promise(resolve => setTimeout(resolve, 2000))
       setResults(data)
 
       if (data.recommendations && data.recommendations.length > 0) {
@@ -335,6 +338,8 @@ export default function ConceptDojoPage() {
             </div>
           )}
         </div>
+
+        {loading && <ConceptDojoSkeleton />}
 
         {/* Results Section */}
         <AnimatePresence>
