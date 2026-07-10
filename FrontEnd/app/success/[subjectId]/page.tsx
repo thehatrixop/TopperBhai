@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Download, ChevronRight, CheckCircle, XCircle, Clock, Menu, X } from 'lucide-react'
@@ -49,6 +49,8 @@ const OPTION_KEYS = ['A', 'B', 'C', 'D'] as const
 
 export default function SuccessPage() {
   const router = useRouter()
+  const params = useParams()
+  const subjectId = params.subjectId as string
   const { language, setLanguage, t } = useLanguage()
   const [paper, setPaper]               = useState<PaperData | null>(null)
   const [showAnswers, setShowAnswers]   = useState(false)
@@ -85,6 +87,29 @@ export default function SuccessPage() {
 
   const totalQuestions = paper?.questions.length || 0
   const answeredCount = Object.keys(selectedAnswers).length
+
+  const isTimeLimitEnabled = paper?.timeLimit && paper.timeLimit !== 'none'
+  const totalLimit = isTimeLimitEnabled ? Number(paper.timeLimit) : 0
+  const isSubmitEnabled = !isTimeLimitEnabled || (timeRemaining <= totalLimit * 0.8)
+
+  const getSubmitWaitTimeText = () => {
+    if (!isTimeLimitEnabled) return ''
+    const requiredSeconds = Math.ceil(totalLimit * 0.2)
+    const elapsedSeconds = totalLimit - timeRemaining
+    const waitSecs = requiredSeconds - elapsedSeconds
+    if (waitSecs <= 0) return ''
+    
+    if (waitSecs < 60) {
+      return language === 'hi' 
+        ? `जमा करने के लिए ${waitSecs}s प्रतीक्षा करें` 
+        : `Wait ${waitSecs}s to submit`
+    } else {
+      const mins = Math.ceil(waitSecs / 60)
+      return language === 'hi'
+        ? `जमा करने के लिए ${mins}m प्रतीक्षा करें`
+        : `Wait ${mins}m to submit`
+    }
+  }
 
   useEffect(() => {
     if (totalQuestions > 0 && answeredCount === totalQuestions) {
@@ -252,41 +277,29 @@ export default function SuccessPage() {
               <option value="hi">हिंदी (Hindi)</option>
             </select>
 
-
-
-            {!isSubmitted ? (
-              (isChallengeStarted || !(paper.timeLimit && paper.timeLimit !== 'none')) && (
+            {!isSubmitted && (isChallengeStarted || !(paper.timeLimit && paper.timeLimit !== 'none')) && (
+              <div className="flex flex-col items-end">
                 <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => setShowSubmitModal(true)}
-                  className="px-4 py-2 bg-topper-amber text-topper-black font-black border-2 border-topper-amber hover:bg-white hover:border-white rounded-md text-sm transition-all cursor-pointer"
+                  whileHover={isSubmitEnabled ? { scale: 1.05 } : {}}
+                  whileTap={isSubmitEnabled ? { scale: 0.95 } : {}}
+                  onClick={() => {
+                    if (isSubmitEnabled) {
+                      setShowSubmitModal(true)
+                    }
+                  }}
+                  disabled={!isSubmitEnabled}
+                  className="px-4 py-2 bg-topper-amber text-topper-black font-black border-2 border-topper-amber hover:bg-white hover:border-white rounded-md text-sm transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-topper-amber disabled:hover:border-topper-amber"
                 >
                   {language === 'hi' ? 'परीक्षा जमा करें' : 'Submit Test'}
                 </motion.button>
-              )
-            ) : (
-              <>
-                <div className="px-4 py-2 bg-green-500/10 border-2 border-green-500 text-green-400 font-extrabold rounded-md text-sm flex items-center gap-1.5 select-none">
-                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                  {language === 'hi' ? 'जमा हो गया' : 'Submitted'}
-                </div>
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => setShowAnswers(p => !p)}
-                  className={`px-4 py-2 font-bold border-2 rounded-md text-sm transition-colors ${
-                    showAnswers
-                      ? 'bg-topper-amber border-topper-amber text-topper-black'
-                      : 'border-topper-graphite text-topper-off-white hover:border-topper-amber'
-                  }`}
-                >
-                  {showAnswers 
-                    ? (language === 'hi' ? 'उत्तर और स्पष्टीकरण छिपाएं' : 'Hide Answers & Explanations') 
-                    : t('success.showAnswers')}
-                </motion.button>
-              </>
+                {!isSubmitEnabled && (
+                  <span className="text-[10px] text-red-400 font-bold mt-1 animate-pulse">
+                    {getSubmitWaitTimeText()}
+                  </span>
+                )}
+              </div>
             )}
+
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -364,7 +377,8 @@ export default function SuccessPage() {
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-10"
+            transition={{ duration: 0.4 }}
+            className="mb-10 text-left border-b-2 border-topper-graphite pb-8 relative"
           >
             {/* Print header */}
             <div className="print-only mb-6 border-b-2 border-black pb-4">
@@ -387,110 +401,42 @@ export default function SuccessPage() {
               </h1>
 
               {/* Stats / Results Panel */}
-              {isSubmitted ? (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="mb-8 p-6 bg-gradient-to-br from-[#1c2c1c] to-topper-charcoal border-2 border-green-500/50 rounded-lg shadow-[4px_4px_0_rgba(0,0,0,1)] relative overflow-hidden"
-                >
-                  {/* Decorative manga badge */}
-                  <div className="absolute top-0 right-0 w-24 h-24 bg-green-500 text-topper-black flex items-center justify-center font-black text-xs uppercase rotate-45 translate-x-8 -translate-y-8 tracking-widest shadow border-l border-b border-topper-black">
-                    Done!
+              <div className="mb-8 p-6 bg-topper-charcoal border-2 border-topper-graphite rounded flex flex-col gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-topper-graphite text-xs mb-1">{t('success.stats.questions')}</p>
+                    <p className="text-3xl font-black text-topper-amber">{paper.questions.length}</p>
                   </div>
-
-                  <h2 className="text-2xl font-black mb-4 uppercase tracking-wider text-green-400 flex items-center gap-2">
-                    <span>🏆</span> {language === 'hi' ? 'चुनौती परिणाम' : 'CHALLENGE RESULTS'}
-                  </h2>
-
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
-                    {/* Accuracy Ring/Big Stat */}
-                    <div className="text-center md:border-r border-topper-graphite/30 py-2">
-                      <p className="text-topper-graphite text-xs uppercase font-extrabold tracking-wider mb-1">
-                        {language === 'hi' ? 'सटीकता' : 'Accuracy'}
-                      </p>
-                      <p className="text-4xl font-black text-green-400">
-                        {Math.round((getScore().correct / paper.questions.length) * 100)}%
-                      </p>
-                    </div>
-
-                    {/* Breakdown */}
-                    <div className="col-span-2 md:border-r border-topper-graphite/30 px-2 md:px-6 py-2 grid grid-cols-3 gap-2">
-                      <div className="text-center bg-[#1e2f1e]/40 p-2 rounded border border-green-500/20">
-                        <p className="text-[10px] text-green-400/80 font-bold uppercase">{language === 'hi' ? 'सही' : 'Correct'}</p>
-                        <p className="text-xl font-black text-green-400">{getScore().correct}</p>
-                      </div>
-                      <div className="text-center bg-[#341d1d]/40 p-2 rounded border border-red-500/20">
-                        <p className="text-[10px] text-red-400/80 font-bold uppercase">{language === 'hi' ? 'गलत' : 'Incorrect'}</p>
-                        <p className="text-xl font-black text-red-400">{getScore().incorrect}</p>
-                      </div>
-                      <div className="text-center bg-topper-black/30 p-2 rounded border border-topper-graphite/20">
-                        <p className="text-[10px] text-topper-graphite/80 font-bold uppercase">{language === 'hi' ? 'छूटे हुए' : 'Unattempted'}</p>
-                        <p className="text-xl font-black text-topper-off-white">{getScore().unattempted}</p>
-                      </div>
-                    </div>
-
-                    {/* Time Taken */}
-                    <div className="text-center py-2">
-                      <p className="text-topper-graphite text-xs uppercase font-extrabold tracking-wider mb-1">
-                        {language === 'hi' ? 'कुल समय' : 'Total Time'}
-                      </p>
-                      <p className="text-2xl font-mono font-black text-topper-amber">
-                        {formatElapsed(totalActiveSolveTime)}
-                      </p>
-                    </div>
+                  <div>
+                    <p className="text-topper-graphite text-xs mb-1">{t('success.stats.topics')}</p>
+                    <p className="text-sm font-bold text-topper-off-white leading-tight">{paper.topics.join(', ')}</p>
                   </div>
-
-                  {/* Motivational Text */}
-                  <div className="mt-4 pt-4 border-t border-topper-graphite/20 text-sm text-topper-off-white/80">
-                    <span className="font-extrabold text-topper-amber">TopperBhai Owl: </span>
-                    {(() => {
-                      const scoreData = getScore()
-                      const pct = (scoreData.correct / paper.questions.length) * 100
-                      if (pct >= 90) return language === 'hi' ? 'अद्भुत! आप एक सच्चे टॉपर हैं। शानदार परिणाम!' : 'Outstanding! You are a true Topper. Incredible accuracy!'
-                      if (pct >= 70) return language === 'hi' ? 'बहुत बढ़िया! थोड़ा और अभ्यास और आप पूर्णता प्राप्त कर लेंगे।' : 'Great job! Just a tiny bit of refinement and you\'ll hit 100%.'
-                      if (pct >= 50) return language === 'hi' ? 'अच्छा प्रयास। नीचे दिए गए स्पष्टीकरणों को ध्यान से पढ़ें और सीखें।' : 'Good attempt. Read through the explanations below to patch up your weak spots.'
-                      return language === 'hi' ? 'हार मत मानो! स्पष्टीकरण पढ़ें, सीखें और दोबारा प्रयास करें।' : 'Don\'t be discouraged! Read the explanations, review the topics, and try another run.'
-                    })()}
+                  <div>
+                    <p className="text-topper-graphite text-xs mb-1">{t('success.stats.difficulty')}</p>
+                    <p className="text-sm font-black text-topper-amber capitalize">
+                      {t(`success.stats.${paper.challenge}` as any) || paper.challenge}
+                    </p>
                   </div>
-                </motion.div>
-              ) : (
-                <div className="mb-8 p-6 bg-topper-charcoal border-2 border-topper-graphite rounded flex flex-col gap-4">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                      <p className="text-topper-graphite text-xs mb-1">{t('success.stats.questions')}</p>
-                      <p className="text-3xl font-black text-topper-amber">{paper.questions.length}</p>
-                    </div>
-                    <div>
-                      <p className="text-topper-graphite text-xs mb-1">{t('success.stats.topics')}</p>
-                      <p className="text-sm font-bold text-topper-off-white leading-tight">{paper.topics.join(', ')}</p>
-                    </div>
-                    <div>
-                      <p className="text-topper-graphite text-xs mb-1">{t('success.stats.difficulty')}</p>
-                      <p className="text-sm font-black text-topper-amber capitalize">
-                        {t(`success.stats.${paper.challenge}` as any) || paper.challenge}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-topper-graphite text-xs mb-1">
-                        {paper.timeLimit && paper.timeLimit !== 'none'
-                          ? (language === 'hi' ? 'शेष समय' : 'TIME REMAINING')
-                          : (language === 'hi' ? 'लिया गया समय' : 'TIME TAKEN')
-                        }
-                      </p>
-                      <p className={`text-3xl font-black font-mono transition-colors ${
-                        paper.timeLimit && paper.timeLimit !== 'none'
-                          ? timeRemaining < 30 ? 'text-red-500 animate-pulse' : 'text-topper-amber'
-                          : activeQuestionTimerRunning ? 'text-topper-amber animate-pulse' : 'text-topper-off-white'
-                      }`}>
-                        {paper.timeLimit && paper.timeLimit !== 'none'
-                          ? formatElapsed(timeRemaining)
-                          : formatElapsed(totalActiveSolveTime)
-                        }
-                      </p>
-                    </div>
+                  <div>
+                    <p className="text-topper-graphite text-xs mb-1">
+                      {paper.timeLimit && paper.timeLimit !== 'none'
+                        ? (language === 'hi' ? 'शेष समय' : 'TIME REMAINING')
+                        : (language === 'hi' ? 'लिया गया समय' : 'TIME TAKEN')
+                      }
+                    </p>
+                    <p className={`text-3xl font-black font-mono transition-colors ${
+                      paper.timeLimit && paper.timeLimit !== 'none'
+                        ? timeRemaining < 30 ? 'text-red-500 animate-pulse' : 'text-topper-amber'
+                        : activeQuestionTimerRunning ? 'text-topper-amber animate-pulse' : 'text-topper-off-white'
+                    }`}>
+                      {paper.timeLimit && paper.timeLimit !== 'none'
+                        ? formatElapsed(timeRemaining)
+                        : formatElapsed(totalActiveSolveTime)
+                      }
+                    </p>
                   </div>
                 </div>
-              )}
+              </div>
             </div>
           </motion.div>
 
@@ -690,9 +636,9 @@ export default function SuccessPage() {
                     )}
                   </div>
 
-                  {/* Options — always visible on screen if expanded or showAnswers, always visible on print */}
+                  {/* Options — always visible on screen if expanded, always visible on print */}
                   <AnimatePresence>
-                    {(expandedId === q.id || showAnswers) && (
+                    {expandedId === q.id && (
                       <motion.div
                         key="options"
                         initial={{ height: 0, opacity: 0 }}
@@ -704,7 +650,26 @@ export default function SuccessPage() {
                         <div className="px-5 pb-5 space-y-2">
                           {q.type === 'fitb' ? (
                             <div className="space-y-3">
-                              {!selectedAnswers[q.id] && !showAnswers ? (
+                              {selectedAnswers[q.id] ? (
+                                <div className="p-4 bg-topper-black/40 border-2 border-topper-graphite rounded-md flex items-center justify-between text-sm shadow-md">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-topper-graphite">{language === 'hi' ? 'सहेजा गया उत्तर:' : 'Saved Answer:'}</span>
+                                    <span className="font-extrabold text-topper-amber">{selectedAnswers[q.id]}</span>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedAnswers(prev => {
+                                        const next = { ...prev }
+                                        delete next[q.id]
+                                        return next
+                                      })
+                                    }}
+                                    className="text-xs bg-topper-charcoal border border-topper-graphite hover:border-topper-amber text-topper-amber px-3 py-1.5 rounded font-black cursor-pointer transition-colors"
+                                  >
+                                    {language === 'hi' ? 'उत्तर बदलें' : 'Change Answer'}
+                                  </button>
+                                </div>
+                              ) : (
                                 <div className="flex gap-3">
                                   <input
                                     type="text"
@@ -712,14 +677,24 @@ export default function SuccessPage() {
                                     onChange={(e) => setTempFitbInputs(prev => ({ ...prev, [q.id]: e.target.value }))}
                                     placeholder={language === 'hi' ? 'अपना उत्तर यहाँ लिखें...' : 'Type your answer...'}
                                     className="flex-1 bg-topper-black border-2 border-topper-graphite text-topper-off-white text-sm px-4 py-2.5 rounded-md focus:outline-none focus:border-topper-amber placeholder-topper-graphite transition-all"
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        const val = (tempFitbInputs[q.id] || '').trim()
+                                        if (val) {
+                                          setSelectedAnswers(prev => ({ ...prev, [q.id]: val }))
+                                          if (expandedId === q.id) {
+                                            setActiveQuestionTimerRunning(false)
+                                            setQuestionTimes(prev => ({ ...prev, [q.id]: activeQuestionTime }))
+                                          }
+                                        }
+                                      }
+                                    }}
                                   />
                                   <button
                                     onClick={() => {
                                       const val = (tempFitbInputs[q.id] || '').trim()
                                       if (!val) return
                                       setSelectedAnswers(prev => ({ ...prev, [q.id]: val }))
-                                      
-                                      // Stop active question timer and save the elapsed duration
                                       if (expandedId === q.id) {
                                         setActiveQuestionTimerRunning(false)
                                         setQuestionTimes(prev => ({ ...prev, [q.id]: activeQuestionTime }))
@@ -727,212 +702,122 @@ export default function SuccessPage() {
                                     }}
                                     className="px-5 py-2.5 bg-topper-amber text-topper-black font-extrabold text-sm rounded-md hover:-translate-y-0.5 active:translate-y-0 transition-all shadow-[2px_2px_0_rgba(0,0,0,1)] border-2 border-topper-black cursor-pointer"
                                   >
-                                    {language === 'hi' ? 'जमा करें' : 'Submit Answer'}
+                                    {language === 'hi' ? 'उत्तर सहेजें' : 'Save Answer'}
                                   </button>
-                                </div>
-                              ) : (
-                                <div className="p-3 bg-topper-black/40 border border-topper-graphite/40 rounded flex flex-col gap-1.5 text-sm">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-topper-graphite">{language === 'hi' ? 'आपका उत्तर:' : 'Your Answer:'}</span>
-                                    <span className={`font-bold ${
-                                      selectedAnswers[q.id]?.trim().toLowerCase() === q.correct_answer.trim().toLowerCase()
-                                        ? 'text-green-400'
-                                        : 'text-red-400'
-                                    }`}>
-                                      {selectedAnswers[q.id] || (language === 'hi' ? '[कोई उत्तर नहीं]' : '[No Answer]')}
-                                    </span>
-                                    {selectedAnswers[q.id] && selectedAnswers[q.id].trim().toLowerCase() === q.correct_answer.trim().toLowerCase() ? (
-                                      <CheckCircle className="w-4 h-4 text-green-500" />
-                                    ) : (
-                                      <XCircle className="w-4 h-4 text-red-500" />
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-topper-graphite">{language === 'hi' ? 'सही उत्तर:' : 'Correct Answer:'}</span>
-                                    <span className="font-extrabold text-green-400">{q.correct_answer}</span>
-                                  </div>
                                 </div>
                               )}
                             </div>
                           ) : q.type === 'msq' ? (
                             <div className="space-y-3">
-                              <div className="space-y-2">
-                                {OPTION_KEYS.map(key => {
-                                  const correctKeys = q.correct_answer.split(',').map(s => s.trim())
-                                  const selectedOption = selectedAnswers[q.id]
-                                  const selectedKeys = (selectedOption || '').split(',').map(s => s.trim()).filter(Boolean)
-                                  const showResult = showAnswers || !!selectedOption
-                                  
-                                  const isCorrect = correctKeys.includes(key)
-                                  const isSelected = showResult 
-                                    ? selectedKeys.includes(key)
-                                    : (tempSelections[q.id] || []).includes(key)
-
-                                  return (
-                                    <button
-                                      key={key}
-                                      disabled={showResult}
-                                      onClick={() => {
-                                        setTempSelections(prev => {
-                                          const current = prev[q.id] || []
-                                          if (current.includes(key)) {
-                                            return { ...prev, [q.id]: current.filter(k => k !== key) }
-                                          } else {
-                                            return { ...prev, [q.id]: [...current, key] }
-                                          }
-                                        })
-                                      }}
-                                      className={`w-full text-left flex items-center gap-3 p-3 rounded-md border-2 transition-colors ${
-                                        showResult
-                                          ? isCorrect
-                                            ? 'border-green-500 bg-green-500/10 cursor-default'
-                                            : isSelected
-                                            ? 'border-red-500 bg-red-500/10 cursor-default'
-                                            : 'border-topper-graphite/30 opacity-60 cursor-default'
-                                          : isSelected
-                                          ? 'border-topper-amber bg-topper-amber/10 cursor-pointer'
-                                          : 'border-topper-graphite hover:border-topper-amber/80 cursor-pointer'
-                                      }`}
-                                    >
-                                      <div className={`w-5 h-5 flex-shrink-0 rounded-md border flex items-center justify-center transition-colors ${
-                                        showResult
-                                          ? isCorrect
-                                            ? 'border-green-500 bg-green-500 text-white'
-                                            : isSelected
-                                            ? 'border-red-500 bg-red-500 text-white'
-                                            : 'border-topper-graphite/40 opacity-60'
-                                          : isSelected
-                                          ? 'border-topper-amber bg-topper-amber text-topper-black font-extrabold'
-                                          : 'border-topper-graphite'
-                                      }`}>
-                                        {isSelected && <span className="text-[10px]">✓</span>}
-                                      </div>
-                                       <span className={`w-7 h-7 flex-shrink-0 rounded-md font-bold text-sm flex items-center justify-center transition-colors ${
-                                        showResult
-                                          ? isCorrect
-                                            ? 'bg-green-500 text-white'
-                                            : isSelected
-                                            ? 'bg-red-500 text-white'
-                                            : 'bg-topper-graphite text-topper-off-white opacity-60'
-                                          : isSelected
-                                          ? 'bg-topper-amber text-topper-black'
-                                          : 'bg-topper-graphite text-topper-off-white'
-                                      }`}>
-                                        {key}
-                                      </span>
-                                      <span className="text-sm text-topper-off-white">{q.options?.[key]}</span>
-                                      {showResult && isCorrect && (
-                                        <CheckCircle className="w-4 h-4 text-green-500 ml-auto flex-shrink-0" />
-                                      )}
-                                      {showResult && isSelected && !isCorrect && (
-                                        <XCircle className="w-4 h-4 text-red-500 ml-auto flex-shrink-0" />
-                                      )}
-                                    </button>
-                                  )
-                                })}
-                              </div>
-                              
-                              {!selectedAnswers[q.id] && !showAnswers && (
-                                <div className="flex justify-end">
+                              {selectedAnswers[q.id] ? (
+                                <div className="p-4 bg-topper-black/40 border-2 border-topper-graphite rounded-md flex items-center justify-between text-sm shadow-md">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-topper-graphite">{language === 'hi' ? 'सहेजे गए विकल्प:' : 'Saved Options:'}</span>
+                                    <span className="font-extrabold text-topper-amber">{selectedAnswers[q.id].split(',').join(', ')}</span>
+                                  </div>
                                   <button
-                                    disabled={!(tempSelections[q.id] && tempSelections[q.id].length > 0)}
                                     onClick={() => {
-                                      const selected = tempSelections[q.id] || []
-                                      if (selected.length === 0) return
-                                      const finalAns = [...selected].sort().join(',')
-                                      setSelectedAnswers(prev => ({ ...prev, [q.id]: finalAns }))
-                                      
-                                      // Stop active question timer and save the elapsed duration
-                                      if (expandedId === q.id) {
-                                        setActiveQuestionTimerRunning(false)
-                                        setQuestionTimes(prev => ({ ...prev, [q.id]: activeQuestionTime }))
-                                      }
+                                      setSelectedAnswers(prev => {
+                                        const next = { ...prev }
+                                        delete next[q.id]
+                                        return next
+                                      })
                                     }}
-                                    className="px-5 py-2.5 bg-topper-amber text-topper-black font-extrabold text-sm rounded-md hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-40 disabled:hover:translate-y-0 transition-all shadow-[2px_2px_0_rgba(0,0,0,1)] border-2 border-topper-black cursor-pointer"
+                                    className="text-xs bg-topper-charcoal border border-topper-graphite hover:border-topper-amber text-topper-amber px-3 py-1.5 rounded font-black cursor-pointer transition-colors"
                                   >
-                                    {language === 'hi' ? 'उत्तर जमा करें' : 'Submit Answer'}
+                                    {language === 'hi' ? 'उत्तर बदलें' : 'Change Answer'}
                                   </button>
+                                </div>
+                              ) : (
+                                <div className="space-y-3">
+                                  <div className="space-y-2">
+                                    {OPTION_KEYS.map(key => {
+                                      const isSelected = (tempSelections[q.id] || []).includes(key)
+                                      return (
+                                        <button
+                                          key={key}
+                                          onClick={() => {
+                                            setTempSelections(prev => {
+                                              const current = prev[q.id] || []
+                                              if (current.includes(key)) {
+                                                return { ...prev, [q.id]: current.filter(k => k !== key) }
+                                              } else {
+                                                return { ...prev, [q.id]: [...current, key] }
+                                              }
+                                            })
+                                          }}
+                                          className={`w-full text-left flex items-center gap-3 p-3 rounded-md border-2 transition-colors cursor-pointer ${
+                                            isSelected
+                                              ? 'border-topper-amber bg-topper-amber/10'
+                                              : 'border-topper-graphite hover:border-topper-amber/80'
+                                          }`}
+                                        >
+                                          <div className={`w-5 h-5 flex-shrink-0 rounded-md border flex items-center justify-center transition-colors ${
+                                            isSelected
+                                              ? 'border-topper-amber bg-topper-amber text-topper-black font-extrabold'
+                                              : 'border-topper-graphite'
+                                          }`}>
+                                            {isSelected && <span className="text-[10px]">✓</span>}
+                                          </div>
+                                          <span className={`w-7 h-7 flex-shrink-0 rounded-md font-bold text-sm flex items-center justify-center transition-colors ${
+                                            isSelected
+                                              ? 'bg-topper-amber text-topper-black'
+                                              : 'bg-topper-graphite text-topper-off-white'
+                                          }`}>
+                                            {key}
+                                          </span>
+                                          <span className="text-sm text-topper-off-white">{q.options?.[key]}</span>
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                  <div className="flex justify-end">
+                                    <button
+                                      disabled={!(tempSelections[q.id] && tempSelections[q.id].length > 0)}
+                                      onClick={() => {
+                                        const selected = tempSelections[q.id] || []
+                                        if (selected.length === 0) return
+                                        const finalAns = [...selected].sort().join(',')
+                                        setSelectedAnswers(prev => ({ ...prev, [q.id]: finalAns }))
+                                        if (expandedId === q.id) {
+                                          setActiveQuestionTimerRunning(false)
+                                          setQuestionTimes(prev => ({ ...prev, [q.id]: activeQuestionTime }))
+                                        }
+                                      }}
+                                      className="px-5 py-2.5 bg-topper-amber text-topper-black font-extrabold text-sm rounded-md hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-40 disabled:hover:translate-y-0 transition-all shadow-[2px_2px_0_rgba(0,0,0,1)] border-2 border-topper-black cursor-pointer"
+                                    >
+                                      {language === 'hi' ? 'उत्तर सहेजें' : 'Save Answer'}
+                                    </button>
+                                  </div>
                                 </div>
                               )}
                             </div>
                           ) : (
                             <div className="space-y-2">
                               {OPTION_KEYS.map(key => {
-                                const isCorrect = key === q.correct_answer
-                                const selectedOption = selectedAnswers[q.id]
-                                const showResult = showAnswers || !!selectedOption
-                                const isSelected = key === selectedOption
-
+                                const isSelected = key === selectedAnswers[q.id]
                                 return (
                                   <button
                                     key={key}
-                                    disabled={showResult}
                                     onClick={() => handleSelectOption(q.id, key)}
-                                    className={`w-full text-left flex items-center gap-3 p-3 rounded-md border-2 transition-colors ${
-                                      showResult
-                                        ? isCorrect
-                                          ? 'border-green-500 bg-green-500/10 cursor-default'
-                                          : isSelected
-                                          ? 'border-red-500 bg-red-500/10 cursor-default'
-                                          : 'border-topper-graphite/30 opacity-60 cursor-default'
-                                        : 'border-topper-graphite hover:border-topper-amber/80 cursor-pointer'
+                                    className={`w-full text-left flex items-center gap-3 p-3 rounded-md border-2 transition-colors cursor-pointer ${
+                                      isSelected
+                                        ? 'border-topper-amber bg-topper-amber/10'
+                                        : 'border-topper-graphite hover:border-topper-amber/80'
                                     }`}
                                   >
                                     <span className={`w-7 h-7 flex-shrink-0 rounded-md font-bold text-sm flex items-center justify-center transition-colors ${
-                                      showResult
-                                        ? isCorrect
-                                          ? 'bg-green-500 text-white'
-                                          : isSelected
-                                          ? 'bg-red-500 text-white'
-                                          : 'bg-topper-graphite text-topper-off-white opacity-60'
+                                      isSelected
+                                        ? 'bg-topper-amber text-topper-black'
                                         : 'bg-topper-graphite text-topper-off-white'
                                     }`}>
                                       {key}
                                     </span>
                                     <span className="text-sm text-topper-off-white">{q.options?.[key]}</span>
-                                    {showResult && isCorrect && (
-                                      <CheckCircle className="w-4 h-4 text-green-500 ml-auto flex-shrink-0" />
-                                    )}
-                                    {showResult && isSelected && !isCorrect && (
-                                      <XCircle className="w-4 h-4 text-red-500 ml-auto flex-shrink-0" />
-                                    )}
                                   </button>
                                 )
                               })}
                             </div>
-                          )}
-
-                          {/* Explanation */}
-                          {(showAnswers || !!selectedAnswers[q.id]) && q.explanation && (
-                            <motion.div
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              transition={{ delay: 0.1 }}
-                              className="mt-3 p-3 bg-topper-black border-l-4 border-topper-amber rounded-r text-sm text-topper-off-white/80"
-                            >
-                              {selectedAnswers[q.id] && (
-                                <div className="mb-2 text-xs font-bold">
-                                  {selectedAnswers[q.id].trim().toLowerCase() === q.correct_answer.trim().toLowerCase() ? (
-                                    <span className="text-green-400 flex items-center gap-1.5">
-                                      <CheckCircle className="w-3.5 h-3.5 inline" /> {language === 'hi' ? 'सही! बहुत बढ़िया।' : 'Correct! Well done.'}
-                                    </span>
-                                  ) : (
-                                    <span className="text-red-400 flex items-center gap-1.5">
-                                      <XCircle className="w-3.5 h-3.5 inline" /> {language === 'hi' ? `गलत। सही उत्तर ${q.correct_answer} है।` : `Incorrect. The correct answer is ${q.correct_answer}.`}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                              <span className="text-topper-amber font-bold">{t('success.explanation')}: </span>
-                              {q.explanation}
-                            </motion.div>
-                          )}
-
-                          {selectedAnswers[q.id] && selectedAnswers[q.id].trim().toLowerCase() !== q.correct_answer.trim().toLowerCase() && (
-                            <QuestionChat
-                              question={q}
-                              selectedAnswer={selectedAnswers[q.id]}
-                            />
                           )}
                         </div>
                       </motion.div>
@@ -959,27 +844,34 @@ export default function SuccessPage() {
 
               {/* Submit Test Button at the bottom of the list */}
               {!isSubmitted && (
-                <motion.div
-                  className="no-print mt-20 mb-10 flex justify-center relative py-6"
-                  initial={{ scale: 0.9, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: 0.2 }}
-                >
+                <div className="no-print mt-20 mb-10 flex flex-col items-center justify-center relative py-6">
                   {/* Visual impact background glow */}
-                  <div className="absolute w-72 h-20 bg-[#f5a623]/10 rounded-full blur-2xl filter animate-pulse pointer-events-none" />
+                  {isSubmitEnabled && (
+                    <div className="absolute w-72 h-20 bg-[#f5a623]/10 rounded-full blur-2xl filter animate-pulse pointer-events-none" />
+                  )}
 
                   <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setShowSubmitModal(true)}
-                    className="group relative px-16 py-5 bg-[#121212] text-topper-off-white hover:text-topper-amber border-2 border-topper-graphite hover:border-topper-amber rounded-lg shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer overflow-hidden tracking-wider select-none font-bold text-xl flex items-center gap-3"
+                    whileHover={isSubmitEnabled ? { scale: 1.02 } : {}}
+                    whileTap={isSubmitEnabled ? { scale: 0.98 } : {}}
+                    onClick={() => {
+                      if (isSubmitEnabled) {
+                        setShowSubmitModal(true)
+                      }
+                    }}
+                    disabled={!isSubmitEnabled}
+                    className="group relative px-16 py-5 bg-[#121212] text-topper-off-white hover:text-topper-amber border-2 border-topper-graphite hover:border-topper-amber rounded-lg shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer overflow-hidden tracking-wider select-none font-bold text-xl flex items-center gap-3 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-topper-off-white disabled:hover:border-topper-graphite"
                   >
                     <span className="text-2xl group-hover:scale-110 transition-transform duration-200">🚀</span>
                     <span className="uppercase font-black tracking-widest">
                       {language === 'hi' ? 'चुनौती पूर्ण करें' : 'Finish Challenge'}
                     </span>
                   </motion.button>
-                </motion.div>
+                  {!isSubmitEnabled && (
+                    <p className="text-sm text-red-400 font-extrabold mt-3 uppercase tracking-wider animate-pulse">
+                      ⚠️ {getSubmitWaitTimeText()}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -1103,11 +995,11 @@ export default function SuccessPage() {
                 </button>
                 <button
                   onClick={() => {
-                    setIsSubmitted(true)
-                    setShowAnswers(true)
-                    setTimerActive(false)
-                    setActiveQuestionTimerRunning(false)
+                    localStorage.setItem('userAnswers', JSON.stringify(selectedAnswers))
+                    localStorage.setItem('userQuestionTimes', JSON.stringify(questionTimes))
+                    localStorage.setItem('userTotalTime', String(totalActiveSolveTime))
                     setShowSubmitModal(false)
+                    router.push(`/success/${subjectId}/result`)
                   }}
                   className="px-6 py-2.5 bg-topper-amber hover:bg-white text-topper-black text-xs font-black uppercase tracking-wider border-2 border-topper-amber hover:border-white rounded-md transition-all cursor-pointer shadow-md"
                 >

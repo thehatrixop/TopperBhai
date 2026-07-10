@@ -309,8 +309,10 @@ export default function DifficultyPage() {
         >
           {challenges.map((challenge, index) => {
             const isSelected = selectedChallenge === challenge.id
-            const estMins = Math.round(selectedQuestionCount * 1.5)
-            const estTimeText = language === 'hi' ? `${estMins} मिनट` : `${estMins} mins`
+            const displayMins = isTimerEnabled
+              ? Math.round(selectedTimeLimit / 60)
+              : Math.round(selectedQuestionCount * 1.5)
+            const estTimeText = language === 'hi' ? `${displayMins} मिनट` : `${displayMins} mins`
             
             return (
               <motion.button

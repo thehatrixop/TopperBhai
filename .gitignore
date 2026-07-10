@@ -15,3 +15,10 @@ backend/*.py[cod]
 
 # Dataset ignores
 dataset/
+
+# User-requested ignores
+daily_update.md
+business_ideas.md
+AI_Study_Coach_Proposal.pdf
+AI_Study_Coach_Proposal.html
+ai study coach.pdf
