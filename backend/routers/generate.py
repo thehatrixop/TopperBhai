@@ -572,10 +572,17 @@ def generate_paper(request: PaperRequest):
             )
 
         # Merge into knowledge_context with no RAG rule restrictions
+        # Limit the characters per topic to stay within the Cerebras TPM rate limit
+        max_chars_total = 15000
+        chars_per_topic = max(3000, max_chars_total // len(topic_texts))
+
         knowledge_context = ""
         for item in topic_texts:
+            topic_text = item["text"].strip()
+            if len(topic_text) > chars_per_topic:
+                topic_text = topic_text[:chars_per_topic] + "\n... [Content truncated to stay within rate limits] ..."
             knowledge_context += f"\n\n{'='*60}\nTOPIC: {item['name']}\n{'='*60}\n\n"
-            knowledge_context += item["text"]
+            knowledge_context += topic_text
         knowledge_context = knowledge_context.strip()
 
         print(f"  Knowledge Context ready ({len(knowledge_context):,} chars). Calling LLM...")
@@ -616,6 +623,8 @@ def generate_paper(request: PaperRequest):
                 )
             
             knowledge_context = format_pyqs_for_context(pyqs, topic_id_to_name)
+            if len(knowledge_context) > 15000:
+                knowledge_context = knowledge_context[:15000] + "\n... [Remaining PYQs truncated to stay within rate limits] ..."
             print(f"    Knowledge Context ready ({len(knowledge_context):,} chars). Calling LLM...")
             cerebras_client = get_cerebras_client()
             questions = generate_questions_with_ai(
@@ -649,6 +658,8 @@ def generate_paper(request: PaperRequest):
                 )
             
             knowledge_context = format_pyqs_for_context(pyqs, topic_id_to_name)
+            if len(knowledge_context) > 15000:
+                knowledge_context = knowledge_context[:15000] + "\n... [Remaining PYQs truncated to stay within rate limits] ..."
             print(f"    Knowledge Context ready ({len(knowledge_context):,} chars). Calling LLM...")
             cerebras_client = get_cerebras_client()
             questions = generate_questions_with_ai(
@@ -746,15 +757,26 @@ def generate_paper(request: PaperRequest):
         pyqs = fetch_pyqs_for_topics(topic_ids, limit_per_topic=limit_per_topic)
 
         # 3. Format context
+        # Limit the characters per topic and pyqs to stay within the Cerebras TPM rate limit
+        max_notes_chars = 10000
+        chars_per_topic = max(2000, max_notes_chars // len(topic_texts)) if topic_texts else 0
+
         knowledge_context = ""
         if topic_texts:
             knowledge_context += "=== TOPIC STUDY NOTES ===\n"
             for item in topic_texts:
-                knowledge_context += f"\nTOPIC: {item['name']}\n{item['text']}\n"
+                topic_text = item["text"].strip()
+                if len(topic_text) > chars_per_topic:
+                    topic_text = topic_text[:chars_per_topic] + "\n... [Content truncated to stay within rate limits] ..."
+                knowledge_context += f"\nTOPIC: {item['name']}\n{topic_text}\n"
         
         if pyqs:
+            pyqs_context = format_pyqs_for_context(pyqs, topic_id_to_name)
+            # Limit PYQ context to 5000 characters
+            if len(pyqs_context) > 5000:
+                pyqs_context = pyqs_context[:5000] + "\n... [Remaining PYQs truncated to stay within rate limits] ..."
             knowledge_context += "\n\n=== SAMPLE PREVIOUS YEAR QUESTIONS (PYQs) FOR CONTEXT ===\n"
-            knowledge_context += format_pyqs_for_context(pyqs, topic_id_to_name)
+            knowledge_context += pyqs_context
 
         knowledge_context = knowledge_context.strip()
 
