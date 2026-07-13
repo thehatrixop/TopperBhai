@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { motion, AnimatePresence } from 'framer-motion'
 import { OwlSpeech, LoadingPanelSequence } from '@/components/manga-ui'
 import { useLanguage } from '@/lib/LanguageContext'
+import { API_BASE_URL } from '@/lib/config'
 
 const generationSteps = [
   'Loading your selected topics...',
@@ -82,7 +83,7 @@ export default function GeneratingPage() {
 
     const generatePaper = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/v1/generate-paper', {
+        const response = await fetch(`${API_BASE_URL}/api/v1/generate-paper`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

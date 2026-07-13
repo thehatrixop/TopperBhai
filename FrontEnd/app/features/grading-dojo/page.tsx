@@ -23,6 +23,7 @@ import {
   ChevronRight
 } from 'lucide-react'
 import { useLanguage } from '@/lib/LanguageContext'
+import { API_BASE_URL } from '@/lib/config'
 import { GradingResultSkeleton } from '@/components/Skeleton'
 
 interface RubricEval {
@@ -185,7 +186,7 @@ export default function GradingDojoPage() {
     formData.append('target_language', language === 'hi' ? 'Hindi' : 'English')
 
     try {
-      const response = await fetch('http://localhost:8000/api/v1/scribe/grade-subjective', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/scribe/grade-subjective`, {
         method: 'POST',
         body: formData
       })

@@ -18,10 +18,14 @@ from routers.manga import router as manga_router
 from routers.community import router as community_router
 from routers.study_plan import router as study_plan_router
 
+# Parse allowed origins from environment variable
+allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
+allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",") if origin.strip()]
+
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

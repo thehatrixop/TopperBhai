@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { useLanguage } from '@/lib/LanguageContext'
 import { StudyPlanSkeleton } from '@/components/Skeleton'
+import { API_BASE_URL } from '@/lib/config'
 
 interface StudyTask {
   id: string
@@ -111,7 +112,7 @@ export default function StudyPlannerPage() {
     const timer3 = setTimeout(() => setGenStep(3), 3500)
 
     try {
-      const response = await fetch('http://localhost:8000/api/v1/study-plan/generate', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/study-plan/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

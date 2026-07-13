@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { Sparkles, Loader2, RefreshCw, AlertCircle, BookOpen, User, MessageCircle } from 'lucide-react'
+import { API_BASE_URL } from '@/lib/config'
 
 interface Dialogue {
   character: string
@@ -53,7 +54,7 @@ export default function MangaStoryboard({ topic, notes = '' }: MangaStoryboardPr
     setLoading(true)
     setErrorMsg('')
     try {
-      const response = await fetch('http://localhost:8000/api/v1/manga/generate-guide', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/manga/generate-guide`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

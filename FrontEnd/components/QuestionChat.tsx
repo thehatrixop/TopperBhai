@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Bot, User, Sparkles, Loader2 } from 'lucide-react'
+import { API_BASE_URL } from '@/lib/config'
 
 interface Question {
   id: number
@@ -77,7 +78,7 @@ export default function QuestionChat({ question, selectedAnswer }: QuestionChatP
 
     try {
       // API call to the backend
-      const response = await fetch('http://localhost:8000/api/v1/chat/analyze-mistake', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/chat/analyze-mistake`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

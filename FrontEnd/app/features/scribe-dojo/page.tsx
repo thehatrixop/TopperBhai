@@ -31,6 +31,7 @@ import {
 } from 'lucide-react'
 import { useLanguage } from '@/lib/LanguageContext'
 import { ScribeResultSkeleton } from '@/components/Skeleton'
+import { API_BASE_URL } from '@/lib/config'
 
 interface Correction {
   original_part: string
@@ -200,7 +201,7 @@ export default function ScribeDojoPage() {
     setWizardLoading(true)
     setWizardError('')
     try {
-      const response = await fetch('http://localhost:8000/api/v1/grammar/letter-fields', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/grammar/letter-fields`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -235,7 +236,7 @@ export default function ScribeDojoPage() {
     setWizardLoading(true)
     setWizardError('')
     try {
-      const response = await fetch('http://localhost:8000/api/v1/grammar/letter-generate', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/grammar/letter-generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -307,7 +308,7 @@ export default function ScribeDojoPage() {
     const selectedContext = context.trim() || 'General'
     
     try {
-      const response = await fetch('http://localhost:8000/api/v1/grammar/check', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/grammar/check`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -366,7 +367,7 @@ export default function ScribeDojoPage() {
     const selectedContext = context.trim() || 'General'
 
     try {
-      const response = await fetch('http://localhost:8000/api/v1/grammar/chat', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/grammar/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

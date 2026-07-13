@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { useLanguage } from '@/lib/LanguageContext'
 import { ConceptDojoSkeleton } from '@/components/Skeleton'
+import { API_BASE_URL } from '@/lib/config'
 
 interface VideoRecommendation {
   video_id: string
@@ -77,7 +78,7 @@ export default function ConceptDojoPage() {
     setFeaturedVideo(null)
 
     try {
-      const response = await fetch('http://localhost:8000/api/v1/video/recommend', {
+      const response = await fetch(`${API_BASE_URL}/api/v1/video/recommend`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

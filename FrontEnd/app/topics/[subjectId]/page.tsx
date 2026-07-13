@@ -7,6 +7,7 @@ import { OwlSpeech, ComicActionButton, NetworkNode } from '@/components/manga-ui
 import { ChevronRight } from 'lucide-react'
 import { useLanguage } from '@/lib/LanguageContext'
 import { TopicsPageSkeleton } from '@/components/Skeleton'
+import { API_BASE_URL } from '@/lib/config'
 
 // Topics are fetched dynamically from the backend database using the subject ID / slug.
 
@@ -27,7 +28,7 @@ export default function TopicsPage() {
     const loadTopics = async () => {
       try {
         const response = await fetch(
-          `http://localhost:8000/api/v1/topics/by-slug/${subjectId}`
+          `${API_BASE_URL}/api/v1/topics/by-slug/${subjectId}`
         )
 
         const data = await response.json()
