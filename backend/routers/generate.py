@@ -108,6 +108,19 @@ def download_pdf_text(notes_url: str, topic_name: str) -> str:
             print(f"  [WARN] Failed to cache PDF locally: {e}")
 
     doc    = fitz.open(stream=io.BytesIO(pdf_bytes), filetype="pdf")
+    
+    # Try direct text extraction first to bypass slow/costly Groq Vision OCR for text PDFs
+    direct_text = ""
+    for page_num, page in enumerate(doc, start=1):
+        page_text = page.get_text()
+        if page_text.strip():
+            direct_text += f"--- Page {page_num} ---\n{page_text}\n\n"
+            
+    if len(direct_text.strip()) > 100:
+        print(f"  [PDF TEXT HIT] Extracted {len(direct_text):,} characters directly from PDF for '{topic_name}'.")
+        doc.close()
+        return direct_text.strip()
+
     client = get_groq_client()
     print(f"  Transcribing {doc.page_count} page(s) via Groq Vision...")
 
@@ -345,7 +358,8 @@ OUTPUT FORMAT (return this exact structure):
 
 
 def _shuffle_options_for_questions(questions: list[dict]) -> list[dict]:
-    """Shuffles the options A, B, C, D for each question and updates correct_answer accordingly."""
+    """Shuffles the options for each question and updates correct_answer accordingly."""
+    option_keys = ["A", "B", "C", "D", "E", "F", "G", "H"]
     for q in questions:
         q_type = q.get("type", "mcq")
         if q_type == "fitb" or q_type == "assertion_reason":
@@ -366,12 +380,10 @@ def _shuffle_options_for_questions(questions: list[dict]) -> list[dict]:
             option_values = list(options.values())
             random.shuffle(option_values)
 
-            new_options = {
-                "A": option_values[0],
-                "B": option_values[1],
-                "C": option_values[2],
-                "D": option_values[3]
-            }
+            new_options = {}
+            for idx, val in enumerate(option_values):
+                if idx < len(option_keys):
+                    new_options[option_keys[idx]] = val
 
             new_correct_keys = []
             for k, v in new_options.items():
@@ -389,12 +401,10 @@ def _shuffle_options_for_questions(questions: list[dict]) -> list[dict]:
             option_values = list(options.values())
             random.shuffle(option_values)
 
-            new_options = {
-                "A": option_values[0],
-                "B": option_values[1],
-                "C": option_values[2],
-                "D": option_values[3]
-            }
+            new_options = {}
+            for idx, val in enumerate(option_values):
+                if idx < len(option_keys):
+                    new_options[option_keys[idx]] = val
 
             new_correct_key = None
             for k, v in new_options.items():

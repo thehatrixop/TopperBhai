@@ -66,13 +66,13 @@ export default function GeneratingPage() {
     }
   }, [currentStep, localizedSteps.length])
 
-  // ── Mark complete when BOTH animation AND API are done ──────────────────────
+  // ── Mark complete when BOTH animation AND API are done, or immediately on API error ──────────────────────
   useEffect(() => {
-    if (currentStep >= localizedSteps.length && apiDone) {
-      const timer = setTimeout(() => setIsComplete(true), 800)
+    if ((currentStep >= localizedSteps.length && apiDone) || apiError) {
+      const timer = setTimeout(() => setIsComplete(true), apiError ? 200 : 800)
       return () => clearTimeout(timer)
     }
-  }, [currentStep, apiDone, localizedSteps.length])
+  }, [currentStep, apiDone, apiError, localizedSteps.length])
 
   // ── API call ────────────────────────────────────────────────────────────────
   const hasFetched = useRef(false)
