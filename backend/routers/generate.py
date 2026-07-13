@@ -121,27 +121,57 @@ def download_pdf_text(notes_url: str, topic_name: str) -> str:
         doc.close()
         return direct_text.strip()
 
+    # 1. Render all pages to base64 images in the main thread (thread-safe, very fast)
+    pages_to_process = []
+    for page_num, page in enumerate(doc, start=1):
+        mat     = fitz.Matrix(2.0, 2.0)
+        pix     = page.get_pixmap(matrix=mat)
+        img_b64 = base64.b64encode(pix.tobytes("png")).decode("utf-8")
+        pages_to_process.append((page_num, img_b64))
+    
+    doc.close()
+
     from concurrent.futures import ThreadPoolExecutor
 
     client = get_groq_client()
-    print(f"  Transcribing {doc.page_count} page(s) in parallel via Groq Vision...")
+    print(f"  Transcribing {len(pages_to_process)} page(s) in parallel via Groq Vision...")
 
-    def transcribe_single_page(args):
-        p_num, p = args
+    def transcribe_image_page(args):
+        p_num, img_b64 = args
         try:
-            p_text = transcribe_page_with_vision(p, p_num, client)
-            return p_num, f"--- Page {p_num} ---\n{p_text}"
+            response = client.chat.completions.create(
+                model=VISION_MODEL,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{img_b64}"},
+                        },
+                        {
+                            "type": "text",
+                            "text": (
+                                "Transcribe ALL content from this page exactly as it appears. "
+                                "Include all text, headings, bullet points, numbered lists, "
+                                "tables (as markdown), formulas, and describe any diagrams in detail. "
+                                "Preserve the logical reading order. Do not add commentary."
+                            )
+                        }
+                    ],
+                }],
+                max_tokens=4096,
+            )
+            text = response.choices[0].message.content.strip()
+            return p_num, f"--- Page {p_num} ---\n{text}"
         except Exception as err:
             return p_num, f"--- Page {p_num} ---\n[Transcription failed: {err}]"
 
-    pages_to_process = list(enumerate(doc, start=1))
-    with ThreadPoolExecutor(max_workers=min(doc.page_count, 10)) as executor:
-        results = list(executor.map(transcribe_single_page, pages_to_process))
+    with ThreadPoolExecutor(max_workers=min(len(pages_to_process), 10)) as executor:
+        results = list(executor.map(transcribe_image_page, pages_to_process))
 
     results.sort(key=lambda x: x[0])
     pages = [text for _, text in results]
 
-    doc.close()
     content = "\n\n".join(pages).strip()
     print(f"  Done: {len(content):,} chars")
     return content
