@@ -10,6 +10,7 @@ import time
 import random
 from pathlib import Path
 from groq import Groq
+from openai import OpenAI
 from db.cerebras_client import get_cerebras_client, CEREBRAS_TEXT_MODEL
 
 router = APIRouter()
