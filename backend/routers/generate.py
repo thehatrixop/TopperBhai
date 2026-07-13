@@ -121,19 +121,25 @@ def download_pdf_text(notes_url: str, topic_name: str) -> str:
         doc.close()
         return direct_text.strip()
 
-    client = get_groq_client()
-    print(f"  Transcribing {doc.page_count} page(s) via Groq Vision...")
+    from concurrent.futures import ThreadPoolExecutor
 
-    pages = []
-    for page_num, page in enumerate(doc, start=1):
-        print(f"    Page {page_num}/{doc.page_count}...")
+    client = get_groq_client()
+    print(f"  Transcribing {doc.page_count} page(s) in parallel via Groq Vision...")
+
+    def transcribe_single_page(args):
+        p_num, p = args
         try:
-            text = transcribe_page_with_vision(page, page_num, client)
-            pages.append(f"--- Page {page_num} ---\n{text}")
-        except Exception as e:
-            pages.append(f"--- Page {page_num} ---\n[Transcription failed: {e}]")
-        if page_num < doc.page_count:
-            time.sleep(0.5)
+            p_text = transcribe_page_with_vision(p, p_num, client)
+            return p_num, f"--- Page {p_num} ---\n{p_text}"
+        except Exception as err:
+            return p_num, f"--- Page {p_num} ---\n[Transcription failed: {err}]"
+
+    pages_to_process = list(enumerate(doc, start=1))
+    with ThreadPoolExecutor(max_workers=min(doc.page_count, 10)) as executor:
+        results = list(executor.map(transcribe_single_page, pages_to_process))
+
+    results.sort(key=lambda x: x[0])
+    pages = [text for _, text in results]
 
     doc.close()
     content = "\n\n".join(pages).strip()
@@ -317,6 +323,7 @@ OUTPUT FORMAT (return this exact structure):
                 ],
                 temperature=0.7,
                 response_format={"type": "json_object"},
+                timeout=45.0,
             )
         except Exception as e:
             print(f"  [Attempt {attempt}] API call failed: {e}")
