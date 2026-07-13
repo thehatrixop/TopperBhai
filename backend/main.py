@@ -20,7 +20,7 @@ from routers.study_plan import router as study_plan_router
 
 # Parse allowed origins from environment variable
 allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
-allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",") if origin.strip()]
+allowed_origins = [origin.strip().rstrip("/") for origin in allowed_origins_str.split(",") if origin.strip()]
 
 app = FastAPI()
 app.add_middleware(

@@ -18,4 +18,4 @@ services:
       - key: CEREBRAS_API_KEY
         sync: false
       - key: ALLOWED_ORIGINS
-        value: "https://topper-bhai.vercel.app/"
+        value: "https://topper-bhai.vercel.app"
