@@ -857,24 +857,40 @@ export default function SuccessPage() {
                               {OPTION_KEYS.map(key => {
                                 const isSelected = key === selectedAnswers[q.id]
                                 return (
-                                  <button
+                                  <motion.button
                                     key={key}
                                     onClick={() => handleSelectOption(q.id, key)}
-                                    className={`w-full text-left flex items-center gap-3 p-3 rounded-md border-2 transition-colors cursor-pointer ${
+                                    whileHover={{ scale: 1.01, x: 4 }}
+                                    whileTap={{ scale: 0.99 }}
+                                    transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                                    className={`w-full text-left flex items-center gap-3 p-3 rounded-md border-2 cursor-pointer transition-all duration-200 ${
                                       isSelected
-                                        ? 'border-topper-amber bg-topper-amber/10'
-                                        : 'border-topper-graphite hover:border-topper-amber/80'
+                                        ? 'border-topper-amber bg-gradient-to-r from-topper-amber/15 to-topper-amber/5 shadow-lg shadow-topper-amber/5'
+                                        : 'border-topper-graphite hover:border-topper-amber/60 hover:bg-topper-charcoal/30'
                                     }`}
                                   >
-                                    <span className={`w-7 h-7 flex-shrink-0 rounded-md font-bold text-sm flex items-center justify-center transition-colors ${
+                                    <span className={`w-7 h-7 flex-shrink-0 rounded-md font-bold text-sm flex items-center justify-center transition-colors duration-200 ${
                                       isSelected
-                                        ? 'bg-topper-amber text-topper-black'
+                                        ? 'bg-topper-amber text-topper-black shadow-md shadow-topper-amber/30'
                                         : 'bg-topper-graphite text-topper-off-white'
                                     }`}>
                                       {key}
                                     </span>
-                                    <span className="text-sm text-topper-off-white">{q.options?.[key]}</span>
-                                  </button>
+                                    <span className={`text-sm transition-colors duration-200 ${
+                                      isSelected ? 'text-topper-amber font-semibold' : 'text-topper-off-white'
+                                    }`}>
+                                      {q.options?.[key]}
+                                    </span>
+                                    {isSelected && (
+                                      <motion.div 
+                                        initial={{ scale: 0, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        className="ml-auto w-4 h-4 rounded-full bg-topper-amber flex items-center justify-center text-topper-black text-[9px] font-black"
+                                      >
+                                        ✓
+                                      </motion.div>
+                                    )}
+                                  </motion.button>
                                 )
                               })}
                             </div>
