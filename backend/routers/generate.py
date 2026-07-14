@@ -416,8 +416,64 @@ OUTPUT FORMAT (return this exact structure):
             print(f"  Retrying...")
 
 
+def fix_statement_options(questions: list[dict]) -> list[dict]:
+    for q in questions:
+        opts = q.get("options")
+        if not opts or not isinstance(opts, dict):
+            continue
+        
+        q_text = q.get("question", "").lower()
+        is_statement = "statement i" in q_text or "statement (i)" in q_text or ("statement (" in q_text and "statement ii" in q_text) or ("statement (0)" in q_text)
+        
+        has_truncated_opts = False
+        for val in opts.values():
+            v_clean = str(val).strip().lower()
+            if v_clean in ["both statement", "statement", "both statement i", "statement i", "statement is incorrect but statement ii is correct"]:
+                has_truncated_opts = True
+                break
+                
+        if is_statement or has_truncated_opts:
+            print(f"  [REPAIR] Fixing statement options for question: '{q.get('question')[:50]}...'")
+            new_opts = {}
+            for k, v in opts.items():
+                v_lower = str(v).strip().lower()
+                
+                if "both statement" in v_lower and ("true" in v_lower or "correct" in v_lower or "are true" in v_lower or "are correct" in v_lower or v_lower == "both statement"):
+                    if k == "A" or "correct" in v_lower or "true" in v_lower:
+                        new_opts[k] = "Both Statement I and Statement II are correct"
+                    else:
+                        new_opts[k] = "Both Statement I and Statement II are incorrect"
+                elif "both statement" in v_lower and ("false" in v_lower or "incorrect" in v_lower or "are false" in v_lower or "are incorrect" in v_lower):
+                    new_opts[k] = "Both Statement I and Statement II are incorrect"
+                elif "statement i is correct" in v_lower or "statement i is true" in v_lower or "statement is true but statement ii is false" in v_lower or v_lower == "statement" or (v_lower.startswith("statement") and "ii is incorrect" in v_lower) or (v_lower.startswith("statement") and "ii is false" in v_lower):
+                    if k == "C" or "ii is incorrect" in v_lower or "ii is false" in v_lower:
+                        new_opts[k] = "Statement I is correct but Statement II is incorrect"
+                    else:
+                        new_opts[k] = "Statement I is incorrect but Statement II is correct"
+                elif "statement i is incorrect" in v_lower or "statement i is false" in v_lower or "statement is incorrect but statement ii is correct" in v_lower or "statement is false but statement ii is true" in v_lower or (v_lower.startswith("statement") and "ii is correct" in v_lower) or (v_lower.startswith("statement") and "ii is true" in v_lower):
+                    new_opts[k] = "Statement I is incorrect but Statement II is correct"
+                else:
+                    if k == "A":
+                        new_opts[k] = "Both Statement I and Statement II are correct"
+                    elif k == "B":
+                        new_opts[k] = "Both Statement I and Statement II are incorrect"
+                    elif k == "C":
+                        new_opts[k] = "Statement I is correct but Statement II is incorrect"
+                    elif k == "D":
+                        new_opts[k] = "Statement I is incorrect but Statement II is correct"
+            
+            if "A" not in new_opts or new_opts["A"] == "": new_opts["A"] = "Both Statement I and Statement II are correct"
+            if "B" not in new_opts or new_opts["B"] == "": new_opts["B"] = "Both Statement I and Statement II are incorrect"
+            if "C" not in new_opts or new_opts["C"] == "": new_opts["C"] = "Statement I is correct but Statement II is incorrect"
+            if "D" not in new_opts or new_opts["D"] == "": new_opts["D"] = "Statement I is incorrect but Statement II is correct"
+            
+            q["options"] = new_opts
+    return questions
+
+
 def _shuffle_options_for_questions(questions: list[dict]) -> list[dict]:
     """Shuffles the options for each question and updates correct_answer accordingly."""
+    questions = fix_statement_options(questions)
     option_keys = ["A", "B", "C", "D", "E", "F", "G", "H"]
     for q in questions:
         q_type = q.get("type", "mcq")
