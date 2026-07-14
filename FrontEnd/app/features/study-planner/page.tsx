@@ -19,7 +19,8 @@ import {
   Calendar,
   Sparkles,
   BookOpen,
-  Loader2
+  Loader2,
+  Plus
 } from 'lucide-react'
 import { useLanguage } from '@/lib/LanguageContext'
 import { StudyPlanSkeleton } from '@/components/Skeleton'
@@ -97,6 +98,80 @@ export default function StudyPlannerPage() {
     language === 'hi' ? 'साप्ताहिक कार्यों को अंतिम रूप दिया जा रहा है...' : 'Formatting weekly study checklist...'
   ]
 
+  const syncStudyPlanToGoogle = async (planName: string, weeklyTasks: WeekPlan[]): Promise<string | undefined> => {
+    const googleConnected = localStorage.getItem('taskQuest_googleConnected') === 'true'
+    const localUserId = localStorage.getItem('taskQuest_localUserId')
+    if (!googleConnected || !localUserId) return undefined
+
+    // Parse the selected reminder time (HH:MM)
+    const [hours, minutes] = reminderTime.split(':').map(Number)
+
+    // Flat map and calculate progressive dates starting from tomorrow
+    let dayOffset = 1
+    const allTasks = weeklyTasks.flatMap(week => 
+      week.tasks.map(t => {
+        const taskDate = new Date()
+        taskDate.setDate(taskDate.getDate() + dayOffset)
+        taskDate.setHours(hours, minutes, 0, 0)
+        
+        dayOffset++
+
+        return {
+          title: t.title,
+          description: t.description || '',
+          reminder_time: taskDate.toISOString()
+        }
+      })
+    )
+
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/google/sync-study-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: localUserId,
+          exam_name: planName,
+          tasks: allTasks
+        })
+      })
+      if (res.status === 403) {
+        alert(
+          language === 'hi'
+            ? "Google Tasks की अनुमति गायब या अपर्याप्त है। कृपया नए अधिकारों को सक्षम करने के लिए Google खाते को डिस्कनेक्ट करके पुन: कनेक्ट करें।"
+            : "Google Calendar/Tasks permission is missing or insufficient. Please disconnect and reconnect your Google account to grant full permissions."
+        )
+      } else if (!res.ok) {
+        console.error("Failed to sync study plan tasks to Google Tasks")
+      } else {
+        const data = await res.json()
+        console.log("Successfully synced study plan tasks to Google Tasks")
+        return data.google_task_list_id
+      }
+    } catch (err) {
+      console.error("Error syncing study plan to Google:", err)
+    }
+    return undefined
+  }
+
+  const deleteGoogleTaskList = async (googleTaskListId: string) => {
+    const googleConnected = localStorage.getItem('taskQuest_googleConnected') === 'true'
+    const localUserId = localStorage.getItem('taskQuest_localUserId')
+    if (!googleConnected || !localUserId) return
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/google/delete-task-list/${localUserId}/${googleTaskListId}`, {
+        method: 'DELETE'
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        console.error(`Failed to delete task list from Google. Status: ${res.status}, body: ${text}`)
+      } else {
+        console.log(`Successfully deleted Google Task List: ${googleTaskListId}`)
+      }
+    } catch (err) {
+      console.error("Failed to delete task list from Google:", err)
+    }
+  }
+
   // Fetch AI Plan
   const handleGeneratePlan = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -142,13 +217,38 @@ export default function StudyPlannerPage() {
           plans = JSON.parse(localStorage.getItem('activeStudyPlans') || '[]')
         } catch (e) {}
         if (plans.length >= 3) {
-          alert(language === 'hi' ? "सीमा समाप्त: अधिकतम 3 सक्रिय अध्ययन योजनाएं हो सकती हैं। कृपया पहले एक को हटाएं।" : "Limit reached: You can have at most 3 active study plans synced. Please delete one in Task Quest first.")
+          alert(language === 'hi' ? "सीमा समाप्त: अधिकतम 3 सक्रिय अध्ययन योजनाएं हो सकती हैं। कृपया पहले एक को हटाएं。" : "Limit reached: You can have at most 3 active study plans synced. Please delete one in Task Quest first.")
           setIsLoading(false)
           return
         }
         plans.push(planData)
         localStorage.setItem('activeStudyPlans', JSON.stringify(plans))
         localStorage.setItem('activeStudyPlan', JSON.stringify(planData))
+
+        // Sync to Google Tasks in background (non-blocking)
+        const isGoogleConnected = localStorage.getItem('taskQuest_googleConnected') === 'true'
+        const storedUserId = localStorage.getItem('taskQuest_localUserId')
+        if (isGoogleConnected && storedUserId) {
+          syncStudyPlanToGoogle(planData.plan_name, planData.weekly_tasks).then((googleTaskListId) => {
+            if (googleTaskListId) {
+              let latestPlans = []
+              try {
+                latestPlans = JSON.parse(localStorage.getItem('activeStudyPlans') || '[]')
+              } catch (e) {}
+              const updatedPlans = latestPlans.map((p: any) => 
+                p.plan_id === planData.plan_id ? { ...p, google_task_list_id: googleTaskListId } : p
+              )
+              localStorage.setItem('activeStudyPlans', JSON.stringify(updatedPlans))
+              
+              planData.google_task_list_id = googleTaskListId
+              localStorage.setItem('activeStudyPlan', JSON.stringify(planData))
+              setPlan({ ...planData })
+              console.log("Background Google Tasks sync completed successfully.")
+            }
+          }).catch(err => {
+            console.error("Background Google Tasks sync failed:", err)
+          })
+        }
       }
       setPlan(planData)
       
@@ -400,7 +500,8 @@ export default function StudyPlannerPage() {
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.3, ease: 'easeInOut' }}
-              className="absolute top-full left-0 w-full bg-topper-charcoal/95 backdrop-blur-xl border-b border-topper-graphite/40 overflow-hidden z-40 lg:hidden shadow-2xl"
+              className="absolute top-full left-0 w-full border-b border-topper-graphite/40 overflow-hidden z-[9999] lg:hidden shadow-2xl"
+              style={{ backgroundColor: '#1a1a1a' }}
             >
               <div className="flex flex-col p-6 gap-1">
                 {[
@@ -462,28 +563,45 @@ export default function StudyPlannerPage() {
             } 
           />
 
-          {/* Reset / New generation option if active plan is loaded */}
+          {/* Options: Add new plan or reset current plan */}
           {plan && (
-            <ComicActionButton
-              onClick={() => {
-                const planIdToDelete = plan?.plan_id
-                setPlan(null)
-                setUploadError(null)
-                if (planIdToDelete) {
-                  let plans = []
-                  try {
-                    plans = JSON.parse(localStorage.getItem('activeStudyPlans') || '[]')
-                  } catch (e) {}
-                  const nextPlans = plans.filter((p: any) => p.plan_id !== planIdToDelete)
-                  localStorage.setItem('activeStudyPlans', JSON.stringify(nextPlans))
-                }
-                localStorage.removeItem('activeStudyPlan')
-              }}
-              className="w-full justify-center bg-topper-charcoal border-2 border-topper-amber text-topper-amber font-extrabold uppercase shadow-[4px_4px_0_#000] hover:bg-topper-charcoal/80"
-            >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              {t('planner.tracker.reset')}
-            </ComicActionButton>
+            <div className="flex flex-col gap-3.5 w-full">
+              <ComicActionButton
+                onClick={() => {
+                  setPlan(null)
+                  setUploadError(null)
+                  localStorage.removeItem('activeStudyPlan')
+                }}
+                className="w-full justify-center bg-topper-amber text-topper-black border border-topper-black font-extrabold uppercase shadow-[4px_4px_0_#000] hover:bg-topper-amber/90"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                {language === 'hi' ? 'नई योजना जोड़ें' : 'Add New Plan'}
+              </ComicActionButton>
+
+              <ComicActionButton
+                onClick={async () => {
+                  const planIdToDelete = plan?.plan_id
+                  if (plan && plan.google_task_list_id) {
+                    await deleteGoogleTaskList(plan.google_task_list_id)
+                  }
+                  setPlan(null)
+                  setUploadError(null)
+                  if (planIdToDelete) {
+                    let plans = []
+                    try {
+                      plans = JSON.parse(localStorage.getItem('activeStudyPlans') || '[]')
+                    } catch (e) {}
+                    const nextPlans = plans.filter((p: any) => p.plan_id !== planIdToDelete)
+                    localStorage.setItem('activeStudyPlans', JSON.stringify(nextPlans))
+                  }
+                  localStorage.removeItem('activeStudyPlan')
+                }}
+                className="w-full justify-center bg-topper-charcoal border-2 border-topper-amber text-topper-amber font-extrabold uppercase shadow-[4px_4px_0_#000] hover:bg-topper-charcoal/80"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                {t('planner.tracker.reset')}
+              </ComicActionButton>
+            </div>
           )}
 
           {/* Upload panel to resume tracking (Only show if no plan active) */}

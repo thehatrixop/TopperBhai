@@ -13,6 +13,7 @@ export const metadata: Metadata = {
   title: 'TopperBhai - AI Practice Papers',
   description: 'Generate personalized exam practice papers with AI. Select topics, generate papers, download PDFs instantly.',
   generator: 'v0.app',
+  manifest: '/manifest.json',
   icons: {
     icon: [
       {

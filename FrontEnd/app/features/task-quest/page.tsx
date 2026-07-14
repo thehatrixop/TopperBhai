@@ -36,6 +36,7 @@ interface Task {
   reminderTime?: string // datetime-local format: "YYYY-MM-DDTHH:MM"
   notified?: boolean
   googleTaskId?: string
+  googleCalendarEventId?: string
 }
 
 type ColumnStatus = Task['status']
@@ -144,13 +145,15 @@ export default function TaskQuestPage() {
   }
 
   // Google Tasks Sync HTTP requests
-  const syncTaskToGoogle = async (task: Task): Promise<string | undefined> => {
+  const syncTaskToGoogle = async (task: Task): Promise<{ googleTaskId?: string, googleCalendarEventId?: string } | undefined> => {
     if (!googleConnected || !localUserId) return
     try {
       let due_date = undefined
       if (task.reminderTime) {
         due_date = task.reminderTime.split('T')[0]
       }
+      const reminder_time = task.reminderTime ? new Date(task.reminderTime).toISOString() : undefined
+
       const res = await fetch('http://localhost:8000/api/v1/google/sync-task', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -161,12 +164,29 @@ export default function TaskQuestPage() {
           description: task.description,
           due_date,
           status: task.status,
-          google_task_id: task.googleTaskId
+          google_task_id: task.googleTaskId,
+          google_calendar_event_id: task.googleCalendarEventId,
+          reminder_time
         })
       })
       if (res.ok) {
         const data = await res.json()
-        return data.google_task_id
+        return {
+          googleTaskId: data.google_task_id,
+          googleCalendarEventId: data.google_calendar_event_id
+        }
+      } else {
+        const errData = await res.json().catch(() => ({}))
+        const errMsg = errData.detail || "Sync failed"
+        if (res.status === 403) {
+          alert(
+            language === 'hi'
+              ? "Google Calendar की अनुमति गायब या अपर्याप्त है। कृपया नए कैलेंडर अधिकारों को सक्षम करने के लिए Google खाते को डिस्कनेक्ट करके पुन: कनेक्ट करें।"
+              : "Google Calendar permission is missing or insufficient. Please disconnect and reconnect your Google account to grant calendar permissions."
+          )
+        } else {
+          console.error("Google sync error:", errMsg)
+        }
       }
     } catch (err) {
       console.error("Google task sync failed:", err)
@@ -174,10 +194,12 @@ export default function TaskQuestPage() {
     return undefined
   }
 
-  const deleteGoogleTask = async (googleTaskId: string) => {
+  const deleteGoogleTask = async (googleTaskId: string, googleCalendarEventId?: string) => {
     if (!googleConnected || !localUserId) return
     try {
-      await fetch(`http://localhost:8000/api/v1/google/delete-task/${localUserId}/${googleTaskId}`, {
+      const url = `http://localhost:8000/api/v1/google/delete-task/${localUserId}/${googleTaskId}` +
+        (googleCalendarEventId ? `?google_calendar_event_id=${googleCalendarEventId}` : '')
+      await fetch(url, {
         method: 'DELETE'
       })
     } catch (err) {
@@ -203,13 +225,71 @@ export default function TaskQuestPage() {
     setGoogleConnected(false)
   }
 
+  const [isSyncing, setIsSyncing] = useState(false)
+
+  const syncAllUnsyncedTasks = async () => {
+    if (!googleConnected || !localUserId) return
+    const unsynced = tasks.filter(t => !t.googleTaskId)
+    if (unsynced.length === 0) {
+      alert(language === 'hi' ? "सभी कार्य पहले से ही सिंक किए गए हैं!" : "All tasks are already synced!")
+      return
+    }
+    
+    setIsSyncing(true)
+    let successCount = 0
+    const nextTasks = tasks.map(t => ({ ...t }))
+    
+    for (let i = 0; i < nextTasks.length; i++) {
+      const task = nextTasks[i]
+      if (!task.googleTaskId) {
+        try {
+          const syncResult = await syncTaskToGoogle(task)
+          if (syncResult && syncResult.googleTaskId) {
+            nextTasks[i].googleTaskId = syncResult.googleTaskId
+            nextTasks[i].googleCalendarEventId = syncResult.googleCalendarEventId
+            successCount++
+          }
+        } catch (err) {
+          console.error("Manual sync failed for task:", task.id, err)
+        }
+      }
+    }
+    
+    if (successCount > 0) {
+      saveTasks(nextTasks)
+      alert(
+        language === 'hi'
+          ? `${successCount} कार्यों को सफलतापूर्वक सिंक किया गया!`
+          : `Successfully synced ${successCount} tasks!`
+      )
+    } else {
+      alert(
+        language === 'hi'
+          ? "सिंक करने में विफल। कृपया बाद में पुनः प्रयास करें।"
+          : "Failed to sync tasks. Please try again later."
+      )
+    }
+    setIsSyncing(false)
+  }
+
   // Form States
   const [taskTitle, setTaskTitle] = useState('')
   const [taskDesc, setTaskDesc] = useState('')
   const [taskStatus, setTaskStatus] = useState<ColumnStatus>('backlog')
   const [taskPriority, setTaskPriority] = useState<Task['priority']>('medium')
   const [taskTagsInput, setTaskTagsInput] = useState('')
-  const [taskReminder, setTaskReminder] = useState('')
+  
+  const getTodayDateString = () => {
+    const today = new Date()
+    const yyyy = today.getFullYear()
+    const mm = String(today.getMonth() + 1).padStart(2, '0')
+    const dd = String(today.getDate()).padStart(2, '0')
+    return `${yyyy}-${mm}-${dd}`
+  }
+
+  const [taskReminderDate, setTaskReminderDate] = useState(getTodayDateString())
+  const [taskReminderTime, setTaskReminderTime] = useState('')
+  const [reminderEnabled, setReminderEnabled] = useState(true)
 
   // Load state from local storage on mount
   useEffect(() => {
@@ -268,6 +348,90 @@ export default function TaskQuestPage() {
     }
     setGoogleConnected(localStorage.getItem('taskQuest_googleConnected') === 'true')
   }, [])
+
+  // Auto sync unsynced tasks when Google Tasks gets connected
+  useEffect(() => {
+    const autoSync = async () => {
+      if (googleConnected && localUserId && tasks.length > 0) {
+        const unsynced = tasks.filter(t => !t.googleTaskId)
+        if (unsynced.length === 0) return
+
+        let hasUpdates = false
+        const nextTasks = tasks.map(t => ({ ...t }))
+
+        for (let i = 0; i < nextTasks.length; i++) {
+          const task = nextTasks[i]
+          if (!task.googleTaskId) {
+            try {
+              const syncResult = await syncTaskToGoogle(task)
+              if (syncResult && syncResult.googleTaskId) {
+                nextTasks[i].googleTaskId = syncResult.googleTaskId
+                nextTasks[i].googleCalendarEventId = syncResult.googleCalendarEventId
+                hasUpdates = true
+              }
+            } catch (err) {
+              console.error("Auto sync failed for task:", task.id, err)
+            }
+          }
+        }
+        if (hasUpdates) {
+          saveTasks(nextTasks)
+        }
+      }
+    }
+    autoSync()
+  }, [googleConnected, localUserId, tasks.length])
+
+  // Keep tasks ref to prevent interval resets
+  const tasksRef = useRef(tasks)
+  useEffect(() => {
+    tasksRef.current = tasks
+  }, [tasks])
+
+  // 60-second scheduler to sync Google Task completion status back to the web app
+  useEffect(() => {
+    if (!googleConnected || !localUserId) return
+
+    const syncInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`http://localhost:8000/api/v1/google/get-tasks-status/${localUserId}`)
+        if (!res.ok) {
+          console.error("Failed to fetch Google Tasks status map")
+          return
+        }
+        const statusMap = await res.json() // Mapping of google_task_id -> 'completed' | 'needsAction'
+        
+        let hasUpdates = false
+        const currentTasks = tasksRef.current
+        const nextTasks = currentTasks.map(task => {
+          if (task.googleTaskId && statusMap[task.googleTaskId]) {
+            const googleStatus = statusMap[task.googleTaskId] // 'completed' or 'needsAction'
+            
+            if (googleStatus === 'completed' && task.status !== 'completed') {
+              hasUpdates = true
+              if (task.reminderTime) {
+                cancelScheduledReminder(task.id)
+              }
+              return { ...task, status: 'completed' as ColumnStatus, notified: true }
+            } else if (googleStatus === 'needsAction' && task.status === 'completed') {
+              hasUpdates = true
+              // Move back to backlog if it was marked uncompleted in Google Tasks
+              return { ...task, status: 'backlog' as ColumnStatus }
+            }
+          }
+          return task
+        })
+
+        if (hasUpdates) {
+          saveTasks(nextTasks)
+        }
+      } catch (err) {
+        console.error("Error in background Google Tasks status sync scheduler:", err)
+      }
+    }, 60000) // 60 seconds
+
+    return () => clearInterval(syncInterval)
+  }, [googleConnected, localUserId])
 
   // Sync state to local storage when tasks change
   const saveTasks = (newTasks: Task[]) => {
@@ -441,21 +605,31 @@ export default function TaskQuestPage() {
           notified: targetStatus === 'completed' ? true : task.notified
         }
 
-        // Cancel reminder if task is marked complete
+        // Cancel reminder if task is marked complete (fire and forget)
         if (targetStatus === 'completed' && task.reminderTime) {
-          await cancelScheduledReminder(taskId)
+          cancelScheduledReminder(taskId)
         }
 
-        // Sync status to Google Tasks
-        if (googleConnected) {
-          const gTaskId = await syncTaskToGoogle(updatedTask)
-          if (gTaskId) {
-            updatedTask.googleTaskId = gTaskId
-          }
-        }
-
+        // Save immediately to local state
         const nextTasks = tasks.map(t => t.id === taskId ? updatedTask : t)
         saveTasks(nextTasks)
+
+        // Sync status to Google Tasks & Calendar in background
+        if (googleConnected) {
+          syncTaskToGoogle(updatedTask).then((syncResult) => {
+            if (syncResult) {
+              const latestTasks = JSON.parse(localStorage.getItem('dojoTasks') || '[]')
+              const finalTasks = latestTasks.map((t: any) => 
+                t.id === taskId 
+                  ? { ...t, googleTaskId: syncResult.googleTaskId, googleCalendarEventId: syncResult.googleCalendarEventId } 
+                  : t
+              )
+              saveTasks(finalTasks)
+            }
+          }).catch(err => {
+            console.error("Background sync task failed:", err)
+          })
+        }
       }
     }
     setDraggedTaskId(null)
@@ -475,7 +649,9 @@ export default function TaskQuestPage() {
     setTaskStatus('backlog')
     setTaskPriority('medium')
     setTaskTagsInput('')
-    setTaskReminder('')
+    setTaskReminderDate(getTodayDateString())
+    setTaskReminderTime('')
+    setReminderEnabled(true)
     setShowAddModal(true)
   }
 
@@ -483,10 +659,20 @@ export default function TaskQuestPage() {
     setEditingTask(task)
     setTaskTitle(task.title)
     setTaskDesc(task.description)
-    setTaskStatus(task.status)
+    setTaskStatus(task.status === 'completed' ? 'backlog' : task.status)
     setTaskPriority(task.priority)
     setTaskTagsInput(task.tags.join(', '))
-    setTaskReminder(task.reminderTime || '')
+    
+    if (task.reminderTime) {
+      const parts = task.reminderTime.split('T')
+      setTaskReminderDate(parts[0])
+      setTaskReminderTime(parts[1] ? parts[1].substring(0, 5) : '')
+      setReminderEnabled(true)
+    } else {
+      setTaskReminderDate(getTodayDateString())
+      setTaskReminderTime('')
+      setReminderEnabled(false)
+    }
     setShowAddModal(true)
   }
 
@@ -499,6 +685,10 @@ export default function TaskQuestPage() {
       .map(tag => tag.trim())
       .filter(tag => tag.length > 0)
 
+    const reminderTime = (reminderEnabled && taskReminderDate && taskReminderTime)
+      ? `${taskReminderDate}T${taskReminderTime}`
+      : undefined
+
     if (editingTask) {
       // Edit mode
       let updatedTask: Task = {
@@ -508,22 +698,23 @@ export default function TaskQuestPage() {
         status: taskStatus,
         priority: taskPriority,
         tags: parsedTags,
-        reminderTime: taskReminder || undefined,
-        notified: taskReminder !== editingTask.reminderTime ? false : editingTask.notified
+        reminderTime: reminderTime,
+        notified: reminderTime !== editingTask.reminderTime ? false : editingTask.notified
       }
 
-      // Sync task changes to Google Tasks
+      // Sync task changes to Google Tasks & Calendar
       if (googleConnected) {
-        const gTaskId = await syncTaskToGoogle(updatedTask)
-        if (gTaskId) {
-          updatedTask.googleTaskId = gTaskId
+        const syncResult = await syncTaskToGoogle(updatedTask)
+        if (syncResult) {
+          updatedTask.googleTaskId = syncResult.googleTaskId
+          updatedTask.googleCalendarEventId = syncResult.googleCalendarEventId
         }
       }
 
       // Web Push Reminder schedule changes
-      if (taskReminder) {
-        if (taskReminder !== editingTask.reminderTime) {
-          await subscribeToPushAndSchedule(editingTask.id, updatedTask.title, updatedTask.description, taskReminder)
+      if (reminderTime) {
+        if (reminderTime !== editingTask.reminderTime) {
+          await subscribeToPushAndSchedule(editingTask.id, updatedTask.title, updatedTask.description, reminderTime)
         }
       } else if (editingTask.reminderTime) {
         await cancelScheduledReminder(editingTask.id)
@@ -541,21 +732,22 @@ export default function TaskQuestPage() {
         status: taskStatus,
         priority: taskPriority,
         tags: parsedTags,
-        reminderTime: taskReminder || undefined,
+        reminderTime: reminderTime,
         notified: false
       }
 
-      // Sync new task to Google Tasks
+      // Sync new task to Google Tasks & Calendar
       if (googleConnected) {
-        const gTaskId = await syncTaskToGoogle(newTask)
-        if (gTaskId) {
-          newTask.googleTaskId = gTaskId
+        const syncResult = await syncTaskToGoogle(newTask)
+        if (syncResult) {
+          newTask.googleTaskId = syncResult.googleTaskId
+          newTask.googleCalendarEventId = syncResult.googleCalendarEventId
         }
       }
 
       // Web Push Reminder scheduling
-      if (taskReminder) {
-        await subscribeToPushAndSchedule(tempId, newTask.title, newTask.description, taskReminder)
+      if (reminderTime) {
+        await subscribeToPushAndSchedule(tempId, newTask.title, newTask.description, reminderTime)
       }
 
       saveTasks([...tasks, newTask])
@@ -568,7 +760,7 @@ export default function TaskQuestPage() {
     const taskToDelete = tasks.find(t => t.id === taskId)
     if (taskToDelete) {
       if (taskToDelete.googleTaskId) {
-        await deleteGoogleTask(taskToDelete.googleTaskId)
+        await deleteGoogleTask(taskToDelete.googleTaskId, taskToDelete.googleCalendarEventId)
       }
       if (taskToDelete.reminderTime) {
         await cancelScheduledReminder(taskId)
@@ -578,6 +770,42 @@ export default function TaskQuestPage() {
     saveTasks(nextTasks)
     if (editingTask && editingTask.id === taskId) {
       setShowAddModal(false)
+    }
+  }
+
+  const handleToggleTaskCompleted = async (task: Task) => {
+    const isCompleted = task.status === 'completed'
+    const newStatus: ColumnStatus = isCompleted ? 'backlog' : 'completed'
+    
+    let updatedTask: Task = {
+      ...task,
+      status: newStatus,
+      notified: newStatus === 'completed' ? true : task.notified
+    }
+
+    if (newStatus === 'completed' && task.reminderTime) {
+      cancelScheduledReminder(task.id)
+    }
+
+    // Save immediately to local state
+    const nextTasks = tasks.map(t => t.id === task.id ? updatedTask : t)
+    saveTasks(nextTasks)
+
+    // Sync status to Google Tasks & Calendar in background
+    if (googleConnected) {
+      syncTaskToGoogle(updatedTask).then((syncResult) => {
+        if (syncResult) {
+          const latestTasks = JSON.parse(localStorage.getItem('dojoTasks') || '[]')
+          const finalTasks = latestTasks.map((t: any) => 
+            t.id === task.id 
+              ? { ...t, googleTaskId: syncResult.googleTaskId, googleCalendarEventId: syncResult.googleCalendarEventId } 
+              : t
+          )
+          saveTasks(finalTasks)
+        }
+      }).catch(err => {
+        console.error("Background sync toggle task completed failed:", err)
+      })
     }
   }
 
@@ -616,13 +844,41 @@ export default function TaskQuestPage() {
     }
   }
 
+  const deleteGoogleTaskList = async (googleTaskListId: string) => {
+    const isConnected = localStorage.getItem('taskQuest_googleConnected') === 'true'
+    const storedUserId = localStorage.getItem('taskQuest_localUserId')
+    if (!isConnected || !storedUserId) return
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/google/delete-task-list/${storedUserId}/${googleTaskListId}`, {
+        method: 'DELETE'
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        console.error(`Failed to delete task list from Google. Status: ${res.status}, body: ${text}`)
+      } else {
+        console.log(`Successfully deleted Google Task List: ${googleTaskListId}`)
+      }
+    } catch (err) {
+      console.error("Failed to delete task list from Google:", err)
+    }
+  }
+
   // Delete active study plan quest
-  const handleDeleteStudyPlan = (planId: string) => {
+  const handleDeleteStudyPlan = async (planId: string) => {
     if (confirm(language === 'hi' ? "क्या आप वाकई इस अध्ययन योजना को हटाना चाहते हैं?" : "Are you sure you want to delete this study plan?")) {
+      const planToDelete = studyPlans.find((p: any) => p.plan_id === planId)
+      if (planToDelete && planToDelete.google_task_list_id) {
+        await deleteGoogleTaskList(planToDelete.google_task_list_id)
+      }
+
       const nextPlans = studyPlans.filter((p: any) => p.plan_id !== planId)
       setStudyPlans(nextPlans)
       localStorage.setItem('activeStudyPlans', JSON.stringify(nextPlans))
       localStorage.removeItem('activeStudyPlan')
+      
+      if (nextPlans.length === 0) {
+        setActiveTab('kanban')
+      }
       setSelectedPlanId(null)
     }
   }
@@ -721,14 +977,24 @@ export default function TaskQuestPage() {
         <div className="hidden lg:flex items-center gap-4">
           {/* Google Tasks Connection Button */}
           {googleConnected ? (
-            <button
-              onClick={handleDisconnectGoogle}
-              className="px-4 py-2 border-2 border-green-500 bg-green-500/10 text-green-500 text-xs font-black uppercase tracking-wider rounded transition-all cursor-pointer flex items-center gap-2 shadow-[2px_2px_0_rgba(0,0,0,1)] hover:translate-y-[-1px] active:translate-y-0"
-              title="Disconnect Google Tasks"
-            >
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-ping" />
-              <span>Google Connected</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={syncAllUnsyncedTasks}
+                disabled={isSyncing}
+                className={`px-4 py-2 border-2 border-topper-amber text-topper-amber text-xs font-black uppercase tracking-wider rounded transition-all cursor-pointer flex items-center gap-2 shadow-[2px_2px_0_rgba(0,0,0,1)] hover:translate-y-[-1px] active:translate-y-0 disabled:opacity-55 disabled:cursor-not-allowed ${isSyncing ? 'bg-topper-amber/25' : 'bg-topper-amber/10'}`}
+                title="Sync all unsynced tasks to Google Tasks"
+              >
+                <span>{isSyncing ? (language === 'hi' ? 'सिंक हो रहा है...' : 'Syncing...') : (language === 'hi' ? 'कार्य सिंक करें' : 'Sync Tasks')}</span>
+              </button>
+              <button
+                onClick={handleDisconnectGoogle}
+                className="px-4 py-2 border-2 border-green-500 bg-green-500/10 text-green-500 text-xs font-black uppercase tracking-wider rounded transition-all cursor-pointer flex items-center gap-2 shadow-[2px_2px_0_rgba(0,0,0,1)] hover:translate-y-[-1px] active:translate-y-0"
+                title="Disconnect Google Tasks"
+              >
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-ping" />
+                <span>Google Connected</span>
+              </button>
+            </div>
           ) : (
             <button
               onClick={handleConnectGoogle}
@@ -803,7 +1069,8 @@ export default function TaskQuestPage() {
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.3, ease: 'easeInOut' }}
-              className="absolute top-full left-0 w-full bg-topper-charcoal/95 backdrop-blur-xl border-b border-topper-graphite/40 overflow-hidden z-40 lg:hidden shadow-2xl"
+              className="absolute top-full left-0 w-full border-b border-topper-graphite/40 overflow-hidden z-[9999] lg:hidden shadow-2xl"
+              style={{ backgroundColor: '#1a1a1a' }}
             >
               <div className="flex flex-col p-6 gap-1">
                 {[
@@ -828,12 +1095,21 @@ export default function TaskQuestPage() {
                 <div className="flex items-center justify-between py-3 px-4 rounded-xl hover:bg-topper-graphite/30">
                   <span className="text-[15px] font-semibold text-topper-off-white/80">Google Tasks</span>
                   {googleConnected ? (
-                    <button
-                      onClick={handleDisconnectGoogle}
-                      className="px-3 py-1.5 border border-green-500 text-green-500 text-xs font-bold rounded-lg bg-green-500/10 cursor-pointer"
-                    >
-                      Connected
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={syncAllUnsyncedTasks}
+                        disabled={isSyncing}
+                        className="px-3 py-1.5 border border-topper-amber text-topper-amber text-xs font-bold rounded-lg bg-topper-amber/10 cursor-pointer disabled:opacity-50"
+                      >
+                        {isSyncing ? (language === 'hi' ? 'सिंक...' : 'Syncing...') : (language === 'hi' ? 'सिंक करें' : 'Sync')}
+                      </button>
+                      <button
+                        onClick={handleDisconnectGoogle}
+                        className="px-3 py-1.5 border border-green-500 text-green-500 text-xs font-bold rounded-lg bg-green-500/10 cursor-pointer"
+                      >
+                        Connected
+                      </button>
+                    </div>
                   ) : (
                     <button
                       onClick={handleConnectGoogle}
@@ -997,32 +1273,48 @@ export default function TaskQuestPage() {
                         draggable
                         onDragStart={(e) => handleDragStart(e, task.id)}
                         onDragEnd={handleDragEnd}
-                        className="group bg-topper-black border-2 border-topper-graphite rounded-xl p-5 hover:border-topper-amber shadow-[3px_3px_0_rgba(0,0,0,1)] hover:translate-y-[-2px] hover:translate-x-[-2px] hover:shadow-[5px_5px_0_rgba(0,0,0,1)] transition-all relative flex flex-col gap-3.5 cursor-grab active:cursor-grabbing"
+                        className="group bg-topper-black border-2 border-topper-graphite rounded-xl p-3.5 hover:border-topper-amber shadow-[2px_2px_0_rgba(0,0,0,1)] hover:translate-y-[-1px] hover:translate-x-[-1px] hover:shadow-[3px_3px_0_rgba(0,0,0,1)] transition-all relative flex flex-col gap-2 cursor-grab active:cursor-grabbing"
                       >
                         {/* Card Top Title Row */}
-                        <div className="flex justify-between items-start gap-4">
-                          <h3 className="font-black text-base uppercase tracking-tight text-topper-off-white group-hover:text-topper-amber transition-colors leading-tight">
-                            {task.title}
-                          </h3>
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={task.status === 'completed'}
+                              onChange={() => handleToggleTaskCompleted(task)}
+                              className="w-3.5 h-3.5 rounded border-topper-graphite text-topper-amber focus:ring-topper-amber cursor-pointer bg-topper-black flex-shrink-0"
+                              title={task.status === 'completed' ? (language === 'hi' ? 'अपूर्ण चिह्नित करें' : 'Mark as Uncompleted') : (language === 'hi' ? 'पूर्ण चिह्नित करें' : 'Mark as Completed')}
+                            />
+                            <h3 className={`font-black text-sm uppercase tracking-tight group-hover:text-topper-amber transition-colors leading-tight truncate ${task.status === 'completed' ? 'line-through text-topper-graphite/60' : 'text-topper-off-white'}`}>
+                              {task.title}
+                            </h3>
+                          </div>
                           <button
                             onClick={() => openEditTask(task)}
-                            className="p-1 border border-topper-graphite/40 text-topper-graphite hover:text-topper-amber hover:border-topper-amber transition-colors bg-topper-charcoal/30 cursor-pointer rounded"
+                            className="p-0.5 border border-topper-graphite/40 text-topper-graphite hover:text-topper-amber hover:border-topper-amber transition-colors bg-topper-charcoal/30 cursor-pointer rounded flex-shrink-0"
                             title="Edit task"
                           >
-                            <Edit2 className="w-3 h-3" />
+                            <Edit2 className="w-2.5 h-2.5" />
                           </button>
                         </div>
 
                         {/* Description */}
-                        <p className="text-xs text-topper-graphite leading-relaxed">
-                          {task.description}
-                        </p>
+                        {task.description && (
+                          <p className="text-[11px] text-topper-graphite leading-normal line-clamp-2">
+                            {task.description}
+                          </p>
+                        )}
 
-                        {/* Meta badges container */}
-                        <div className="flex flex-wrap gap-2">
+                        {/* Badges Container (Tags, Reminders, Sync, Priority) */}
+                        <div className="flex flex-wrap gap-1.5 mt-0.5 items-center">
+                          {/* Priority dot badge */}
+                          <span className={`text-[8px] uppercase font-black px-1.5 py-0.5 border rounded-full select-none ${getPriorityBadgeClass(task.priority)}`}>
+                            {task.priority}
+                          </span>
+
                           {task.reminderTime && (
-                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-topper-cyan bg-topper-cyan/5 border border-topper-cyan/20 px-2 py-1 rounded w-fit select-none">
-                              <Clock className="w-3.5 h-3.5" />
+                            <div className="flex items-center gap-1 text-[8px] font-bold text-topper-cyan bg-topper-cyan/5 border border-topper-cyan/20 px-1.5 py-0.5 rounded w-fit select-none">
+                              <Clock className="w-2.5 h-2.5" />
                               <span>{new Date(task.reminderTime).toLocaleString(language === 'hi' ? 'hi-IN' : 'en-US', {
                                 month: 'short',
                                 day: 'numeric',
@@ -1033,19 +1325,16 @@ export default function TaskQuestPage() {
                           )}
 
                           {task.googleTaskId && (
-                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-green-500 bg-green-500/5 border border-green-500/20 px-2 py-1 rounded w-fit select-none">
-                              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                              <span>Google Synced</span>
+                            <div className="flex items-center gap-1 text-[8px] font-bold text-green-500 bg-green-500/5 border border-green-500/20 px-1.5 py-0.5 rounded w-fit select-none">
+                              <span className="w-1 h-1 rounded-full bg-green-500 animate-pulse" />
+                              <span>Synced</span>
                             </div>
                           )}
-                        </div>
 
-                        {/* Tags & Priority row */}
-                        <div className="flex flex-wrap gap-1.5 mt-1">
                           {task.tags.map(tag => (
                             <span
                               key={tag}
-                              className="border border-topper-graphite/40 text-topper-graphite text-[9px] uppercase font-black px-2 py-0.5 rounded select-none"
+                              className="border border-topper-graphite/40 text-topper-graphite/80 text-[8px] uppercase font-black px-1.5 py-0.5 rounded select-none"
                             >
                               {tag}
                             </span>
@@ -1053,30 +1342,25 @@ export default function TaskQuestPage() {
                         </div>
 
                         {/* Card Bottom Meta & Actions */}
-                        <div className="flex justify-between items-center border-t border-topper-graphite/20 pt-3 mt-1 text-xs">
-                          {/* Priority dot badge */}
-                          <span className={`text-[9px] uppercase font-black px-2 py-0.5 border rounded-full select-none ${getPriorityBadgeClass(task.priority)}`}>
-                            {task.priority}
+                        <div className="flex justify-between items-center border-t border-topper-graphite/20 pt-2 mt-0.5 text-xs">
+                          {/* Dummy comments placeholder */}
+                          <span className="flex items-center gap-1 text-[9px] text-topper-graphite select-none">
+                            <MessageSquare className="w-3 h-3" />
+                            <span>2</span>
                           </span>
 
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2">
                             {/* Focus Dojo Sync trigger for In-Progress cards */}
                             {col.id === 'inProgress' && (
                               <button
                                 onClick={() => handleStartStudyBlock(task)}
-                                className="flex items-center gap-1 px-2.5 py-1 bg-topper-amber text-topper-black border border-topper-black rounded font-black text-[10px] uppercase shadow-[1.5px_1.5px_0_rgba(0,0,0,1)] hover:translate-y-[-1px] active:translate-y-0 transition-all cursor-pointer"
+                                className="flex items-center gap-1 px-2 py-0.5 bg-topper-amber text-topper-black border border-topper-black rounded font-black text-[9px] uppercase shadow-[1px_1px_0_rgba(0,0,0,1)] hover:translate-y-[-0.5px] active:translate-y-0 transition-all cursor-pointer"
                                 title={language === 'hi' ? 'कार्य का नाम सीधे अध्ययन फोकस डोजो में लोड करें' : 'Load task name directly into Study Focus Dojo'}
                               >
-                                <Play className="w-2.5 h-2.5 fill-topper-black" />
+                                <Play className="w-2 h-2 fill-topper-black" />
                                 <span>{language === 'hi' ? 'अध्ययन' : 'Study'}</span>
                               </button>
                             )}
-
-                            {/* Dummy comments placeholder */}
-                            <span className="flex items-center gap-1 text-[10px] text-topper-graphite select-none">
-                              <MessageSquare className="w-3.5 h-3.5" />
-                              <span>2</span>
-                            </span>
                           </div>
                         </div>
                       </div>
@@ -1424,7 +1708,6 @@ export default function TaskQuestPage() {
                       <option value="backlog" className="bg-[#1a1a1a] text-topper-off-white">{t('tasks.backlog')}</option>
                       <option value="inProgress" className="bg-[#1a1a1a] text-topper-off-white">{t('tasks.inProgress')}</option>
                       <option value="review" className="bg-[#1a1a1a] text-topper-off-white">{t('tasks.review')}</option>
-                      <option value="completed" className="bg-[#1a1a1a] text-topper-off-white">{t('tasks.completed')}</option>
                     </select>
                   </div>
                   <div className="flex flex-col gap-1.5">
@@ -1453,18 +1736,53 @@ export default function TaskQuestPage() {
                   />
                 </div>
 
-                {/* Scheduler Reminder Date/Time */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs uppercase tracking-wider text-topper-off-white/60 flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-topper-cyan" />
-                    <span>{language === 'hi' ? 'अनुस्मारक समय निर्धारित करें (वैकल्पिक)' : 'Schedule Reminder Time (Optional)'}</span>
+                {/* Scheduler Reminder Date/Time Toggle & Split Inputs */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs uppercase tracking-wider text-topper-off-white/60 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-topper-cyan" />
+                      <span>{language === 'hi' ? 'अनुस्मारक समय निर्धारित करें' : 'Schedule Reminder Time'}</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={reminderEnabled}
+                      onChange={(e) => setReminderEnabled(e.target.checked)}
+                      className="w-4 h-4 rounded border-topper-graphite text-topper-amber focus:ring-topper-amber cursor-pointer bg-topper-black"
+                    />
                   </label>
-                  <input
-                    type="datetime-local"
-                    value={taskReminder}
-                    onChange={(e) => setTaskReminder(e.target.value)}
-                    className="px-4 py-2.5 text-sm bg-[#0a0a0a] border-2 border-[#2a2a2a] rounded-md text-topper-off-white focus:outline-none focus:border-topper-amber font-mono cursor-pointer"
-                  />
+                  
+                  {reminderEnabled && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[10px] uppercase tracking-wider text-topper-off-white/40">{language === 'hi' ? 'तारीख' : 'Date'}</label>
+                        <input
+                          type="date"
+                          value={taskReminderDate}
+                          onChange={(e) => setTaskReminderDate(e.target.value)}
+                          onMouseEnter={(e) => {
+                            try {
+                              e.currentTarget.showPicker();
+                            } catch (err) {}
+                          }}
+                          className="px-4 py-2 text-sm bg-[#0a0a0a] border-2 border-[#2a2a2a] rounded-md text-topper-off-white focus:outline-none focus:border-topper-amber font-mono cursor-pointer w-full"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[10px] uppercase tracking-wider text-topper-off-white/40">{language === 'hi' ? 'समय' : 'Time'}</label>
+                        <input
+                          type="time"
+                          value={taskReminderTime}
+                          onChange={(e) => setTaskReminderTime(e.target.value)}
+                          onMouseEnter={(e) => {
+                            try {
+                              e.currentTarget.showPicker();
+                            } catch (err) {}
+                          }}
+                          className="px-4 py-2 text-sm bg-[#0a0a0a] border-2 border-[#2a2a2a] rounded-md text-topper-off-white focus:outline-none focus:border-topper-amber font-mono cursor-pointer w-full"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Actions row */}

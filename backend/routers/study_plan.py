@@ -59,6 +59,22 @@ Additional details/study style constraint: {request.additional_info or "None"}""
             response_format={"type": "json_object"}
         )
         plan_data = json.loads(response.choices[0].message.content.strip())
+        
+        # Normalize and format task titles to "WXX-YY-title"
+        if "weekly_tasks" in plan_data and isinstance(plan_data["weekly_tasks"], list):
+            import re
+            for week in plan_data["weekly_tasks"]:
+                week_num = week.get("week_number", 1)
+                w_str = f"W{str(week_num).zfill(2)}"
+                tasks = week.get("tasks", [])
+                if isinstance(tasks, list):
+                    for idx, task in enumerate(tasks):
+                        t_str = str(idx + 1).zfill(2)
+                        orig_title = task.get("title", "")
+                        # Clean any existing "WXX-YY-" prefixes from the start of the title
+                        cleaned_title = re.sub(r'^W\d+-\d+-', '', orig_title).strip()
+                        task["title"] = f"{w_str}-{t_str}-{cleaned_title}"
+                        
         return plan_data
     except Exception as e:
         print(f"Cerebras study plan generation failed: {e}")

@@ -3,6 +3,8 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 import os
 import time
+import datetime
+import urllib.parse
 import httpx
 from typing import Optional
 from db.supabase_client import supabase
@@ -25,23 +27,25 @@ class TaskSyncRequest(BaseModel):
     due_date: Optional[str] = None  # YYYY-MM-DD format
     status: str  # 'backlog' | 'inProgress' | 'review' | 'completed'
     google_task_id: Optional[str] = None  # Existing Google Task ID if synced already
+    google_calendar_event_id: Optional[str] = None  # Existing Google Calendar Event ID if synced
+    reminder_time: Optional[str] = None  # ISO-8601 UTC string for calendar events
 
 @router.get("/google/auth-url")
 def get_auth_url(user_id: str = Query(..., description="The local anonymous user UUID from localStorage")):
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Google Client ID is not configured on the backend.")
         
-    scope = "https://www.googleapis.com/auth/tasks"
-    auth_url = (
-        f"https://accounts.google.com/o/oauth2/v2/auth?"
-        f"response_type=code"
-        f"&client_id={GOOGLE_CLIENT_ID}"
-        f"&redirect_uri={GOOGLE_REDIRECT_URI}"
-        f"&scope={scope}"
-        f"&state={user_id}"
-        f"&access_type=offline"
-        f"&prompt=consent"
-    )
+    scope = "https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/calendar.events"
+    params = {
+        "response_type": "code",
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "scope": scope,
+        "state": user_id,
+        "access_type": "offline",
+        "prompt": "consent"
+    }
+    auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urllib.parse.urlencode(params, quote_via=urllib.parse.quote)}"
     return {"auth_url": auth_url}
 
 @router.get("/google/callback")
@@ -150,13 +154,22 @@ async def get_or_create_task_list(user_id: str, access_token: str) -> str:
     # Check if we already saved the list_id
     res = supabase.table("user_google_tokens").select("google_task_list_id").eq("user_id", user_id).execute()
     if res.data and res.data[0].get("google_task_list_id"):
-        return res.data[0]["google_task_list_id"]
+        list_id = res.data[0]["google_task_list_id"]
+        # Verify the list still exists
+        headers = {"Authorization": f"Bearer {access_token}"}
+        async with httpx.AsyncClient() as client:
+            check_res = await client.get(f"https://tasks.googleapis.com/tasks/v1/users/@me/lists/{list_id}", headers=headers)
+            if check_res.status_code == 200:
+                return list_id
+            elif check_res.status_code in [404, 403]:
+                # If deleted or inaccessible, clear cache and proceed
+                supabase.table("user_google_tokens").update({"google_task_list_id": None}).eq("user_id", user_id).execute()
         
     headers = {"Authorization": f"Bearer {access_token}"}
     
     async with httpx.AsyncClient() as client:
         # Check existing lists
-        lists_res = await client.get("https://tasks.googleapis.com/v1/users/@me/lists", headers=headers)
+        lists_res = await client.get("https://tasks.googleapis.com/tasks/v1/users/@me/lists", headers=headers)
         if lists_res.status_code == 200:
             task_lists = lists_res.json().get("items", [])
             for t_list in task_lists:
@@ -167,11 +180,11 @@ async def get_or_create_task_list(user_id: str, access_token: str) -> str:
                     
         # If not found, create new list
         create_res = await client.post(
-            "https://tasks.googleapis.com/v1/users/@me/lists",
+            "https://tasks.googleapis.com/tasks/v1/users/@me/lists",
             headers=headers,
             json={"title": "TopperBhai Task Quest"}
         )
-        if create_res.status_code != 200:
+        if create_res.status_code not in [200, 201]:
             raise HTTPException(status_code=500, detail="Failed to create Google Tasks list.")
             
         list_id = create_res.json().get("id")
@@ -188,11 +201,10 @@ async def sync_task(request: TaskSyncRequest):
         "Content-Type": "application/json"
     }
     
-    # Format Google Task payload
-    # Status in Google Tasks is either 'needsAction' or 'completed'
+    # --- 1. Sync Google Task ---
+    google_task_id = request.google_task_id
     google_status = "completed" if request.status == "completed" else "needsAction"
     
-    # Format due date (Google Tasks expects RFC 3339 formatted date-only at midnight UTC, e.g. YYYY-MM-DDT00:00:00.000Z)
     due_timestamp = None
     if request.due_date:
         due_timestamp = f"{request.due_date}T00:00:00.000Z"
@@ -206,40 +218,258 @@ async def sync_task(request: TaskSyncRequest):
         task_payload["due"] = due_timestamp
         
     async with httpx.AsyncClient() as client:
-        if request.google_task_id:
-            # Update existing task
-            # If status changes to completed/needsAction, we might need to send it
-            url = f"https://tasks.googleapis.com/v1/lists/{list_id}/tasks/{request.google_task_id}"
-            res = await client.put(url, headers=headers, json=task_payload)
-            if res.status_code == 200:
-                return {"status": "updated", "google_task_id": request.google_task_id}
+        task_synced = False
+        if google_task_id:
+            url = f"https://tasks.googleapis.com/tasks/v1/lists/{list_id}/tasks/{google_task_id}"
+            res = await client.patch(url, headers=headers, json=task_payload)
+            print(f"[DEBUG] Google task update status: {res.status_code}, response: {res.text}")
+            if res.status_code in [200, 201, 204]:
+                task_synced = True
             elif res.status_code == 404:
-                # If deleted in Google Tasks, recreate it
-                pass
-            else:
-                raise HTTPException(status_code=res.status_code, detail=f"Google API update failed: {res.text}")
+                google_task_id = None  # Recreate
                 
-        # Create a new task
-        url = f"https://tasks.googleapis.com/v1/lists/{list_id}/tasks"
-        res = await client.post(url, headers=headers, json=task_payload)
-        if res.status_code == 200:
-            new_google_task_id = res.json().get("id")
-            return {"status": "created", "google_task_id": new_google_task_id}
-        else:
-            raise HTTPException(status_code=res.status_code, detail=f"Google API creation failed: {res.text}")
+        if not google_task_id:
+            url = f"https://tasks.googleapis.com/tasks/v1/lists/{list_id}/tasks"
+            res = await client.post(url, headers=headers, json=task_payload)
+            if res.status_code in [200, 201]:
+                google_task_id = res.json().get("id")
+                task_synced = True
+            else:
+                raise HTTPException(status_code=res.status_code, detail=f"Google Tasks creation failed: {res.text}")
+                
+        if not task_synced:
+            raise HTTPException(status_code=400, detail="Failed to sync task to Google Tasks.")
+
+        # --- 2. Sync Google Calendar Event (For Alarm Reminders) ---
+        google_calendar_event_id = request.google_calendar_event_id
+        if request.reminder_time:
+            try:
+                dt_str = request.reminder_time.split(".")[0].replace("Z", "")
+                start_dt = datetime.datetime.fromisoformat(dt_str)
+            except Exception:
+                start_dt = datetime.datetime.now()
+            
+            end_dt = start_dt + datetime.timedelta(minutes=30)
+            
+            event_payload = {
+                "summary": f"Study Quest: {request.title}",
+                "description": request.description,
+                "start": {
+                    "dateTime": start_dt.isoformat() + "Z",
+                    "timeZone": "UTC"
+                },
+                "end": {
+                    "dateTime": end_dt.isoformat() + "Z",
+                    "timeZone": "UTC"
+                },
+                "reminders": {
+                    "useDefault": False,
+                    "overrides": [
+                        {"method": "popup", "minutes": 0},  # Immediate mobile alarm/alert
+                        {"method": "popup", "minutes": 10}  # 10 minute warning
+                    ]
+                }
+            }
+            
+            if google_calendar_event_id:
+                url = f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{google_calendar_event_id}"
+                cal_res = await client.put(url, headers=headers, json=event_payload)
+                if cal_res.status_code == 403:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Google Calendar permission is missing or insufficient. Please disconnect and reconnect your Google account."
+                    )
+                elif cal_res.status_code not in [200, 201]:
+                    google_calendar_event_id = None # Recreate if deleted/not found
+            
+            if not google_calendar_event_id:
+                url = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+                cal_res = await client.post(url, headers=headers, json=event_payload)
+                if cal_res.status_code in [200, 201]:
+                    google_calendar_event_id = cal_res.json().get("id")
+                elif cal_res.status_code == 403:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Google Calendar permission is missing or insufficient. Please disconnect and reconnect your Google account."
+                    )
+                else:
+                    print(f"[WARNING] Google Calendar Event creation failed: {cal_res.text}")
+                    
+        elif google_calendar_event_id:
+            # If reminder was cleared, delete the calendar event
+            url = f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{google_calendar_event_id}"
+            await client.delete(url, headers=headers)
+            google_calendar_event_id = None
+
+    return {
+        "status": "success",
+        "google_task_id": google_task_id,
+        "google_calendar_event_id": google_calendar_event_id
+    }
 
 @router.delete("/google/delete-task/{user_id}/{google_task_id}")
-async def delete_task(user_id: str, google_task_id: str):
+async def delete_task(user_id: str, google_task_id: str, google_calendar_event_id: Optional[str] = Query(None)):
     access_token = await get_google_access_token(user_id)
     list_id = await get_or_create_task_list(user_id, access_token)
     
     headers = {"Authorization": f"Bearer {access_token}"}
-    url = f"https://tasks.googleapis.com/v1/lists/{list_id}/tasks/{google_task_id}"
+    url = f"https://tasks.googleapis.com/tasks/v1/lists/{list_id}/tasks/{google_task_id}"
     
     async with httpx.AsyncClient() as client:
         res = await client.delete(url, headers=headers)
+        
+        # Also delete calendar event if it exists and is a valid ID
+        if google_calendar_event_id and google_calendar_event_id not in ["", "null", "undefined"]:
+            cal_url = f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{google_calendar_event_id}"
+            await client.delete(cal_url, headers=headers)
         
     if res.status_code not in [200, 204, 404]:
         raise HTTPException(status_code=res.status_code, detail=f"Google API delete failed: {res.text}")
         
     return {"status": "deleted"}
+
+class StudyPlanTaskSync(BaseModel):
+    title: str
+    description: str
+    reminder_time: Optional[str] = None
+
+class StudyPlanSyncRequest(BaseModel):
+    user_id: str
+    exam_name: str
+    tasks: list[StudyPlanTaskSync]
+
+@router.post("/google/sync-study-plan")
+async def sync_study_plan(request: StudyPlanSyncRequest):
+    access_token = await get_google_access_token(request.user_id)
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    
+    # 1. Create a new task list named after the exam
+    async with httpx.AsyncClient() as client:
+        list_payload = {"title": f"TopperBhai: {request.exam_name}"}
+        list_res = await client.post(
+            "https://tasks.googleapis.com/tasks/v1/users/@me/lists",
+            headers=headers,
+            json=list_payload
+        )
+        if list_res.status_code not in [200, 201]:
+            if list_res.status_code == 403:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Google Calendar/Tasks permission is missing or insufficient. Please disconnect and reconnect your Google account."
+                )
+            raise HTTPException(status_code=list_res.status_code, detail=f"Failed to create Google Task List: {list_res.text}")
+            
+        list_id = list_res.json().get("id")
+        
+        # 2. Add each task to the newly created task list & schedule in Calendar
+        created_tasks = []
+        for i, task in enumerate(request.tasks):
+            task_payload = {
+                "title": task.title,
+                "notes": task.description,
+                "status": "needsAction" # uncompleted
+            }
+            task_res = await client.post(
+                f"https://tasks.googleapis.com/tasks/v1/lists/{list_id}/tasks",
+                headers=headers,
+                json=task_payload
+            )
+            if task_res.status_code in [200, 201]:
+                created_tasks.append(task_res.json().get("id"))
+            
+            # Sync to Google Calendar
+            if task.reminder_time:
+                try:
+                    dt_str = task.reminder_time.split(".")[0].replace("Z", "")
+                    start_dt = datetime.datetime.fromisoformat(dt_str)
+                except Exception:
+                    start_dt = datetime.datetime.now() + datetime.timedelta(days=i+1)
+                
+                end_dt = start_dt + datetime.timedelta(minutes=30)
+                
+                event_payload = {
+                    "summary": task.title,
+                    "description": task.description,
+                    "start": {
+                        "dateTime": start_dt.isoformat() + "Z",
+                        "timeZone": "UTC"
+                    },
+                    "end": {
+                        "dateTime": end_dt.isoformat() + "Z",
+                        "timeZone": "UTC"
+                    },
+                    "reminders": {
+                        "useDefault": False,
+                        "overrides": [
+                            {"method": "popup", "minutes": 0},
+                            {"method": "popup", "minutes": 10}
+                        ]
+                    }
+                }
+                
+                cal_res = await client.post(
+                    "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+                    headers=headers,
+                    json=event_payload
+                )
+                if cal_res.status_code == 403:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Google Calendar permission is missing or insufficient. Please disconnect and reconnect your Google account."
+                    )
+                elif cal_res.status_code not in [200, 201]:
+                    print(f"[WARNING] Study Plan Calendar Event creation failed: {cal_res.text}")
+                
+    return {
+        "status": "success",
+        "google_task_list_id": list_id,
+        "task_count": len(created_tasks)
+    }
+
+@router.delete("/google/delete-task-list/{user_id}/{google_task_list_id}")
+async def delete_task_list(user_id: str, google_task_list_id: str):
+    print(f"[DEBUG] Deleting task list {google_task_list_id} for user {user_id}")
+    access_token = await get_google_access_token(user_id)
+    headers = {"Authorization": f"Bearer {access_token}"}
+    url = f"https://tasks.googleapis.com/tasks/v1/users/@me/lists/{google_task_list_id}"
+    
+    async with httpx.AsyncClient() as client:
+        res = await client.delete(url, headers=headers)
+        
+    print(f"[DEBUG] Google delete list response status: {res.status_code}, text: {res.text}")
+    if res.status_code not in [200, 204, 404]:
+        raise HTTPException(status_code=res.status_code, detail=f"Google API delete list failed: {res.text}")
+        
+    return {"status": "deleted"}
+
+@router.get("/google/get-tasks-status/{user_id}")
+async def get_tasks_status(user_id: str):
+    access_token = await get_google_access_token(user_id)
+    list_id = await get_or_create_task_list(user_id, access_token)
+    
+    headers = {"Authorization": f"Bearer {access_token}"}
+    url = f"https://tasks.googleapis.com/tasks/v1/lists/{list_id}/tasks"
+    
+    async with httpx.AsyncClient() as client:
+        res = await client.get(url, headers=headers)
+        
+    if res.status_code != 200:
+        # If the task list doesn't exist yet, return an empty status map
+        if res.status_code == 404:
+            return {}
+        raise HTTPException(status_code=res.status_code, detail=f"Google API list tasks failed: {res.text}")
+        
+    tasks_data = res.json().get("items", [])
+    
+    # Return a map of google_task_id -> status ('completed' or 'needsAction')
+    status_map = {}
+    for item in tasks_data:
+        g_id = item.get("id")
+        status = item.get("status") # 'completed' or 'needsAction'
+        if g_id:
+            status_map[g_id] = status
+            
+    return status_map
