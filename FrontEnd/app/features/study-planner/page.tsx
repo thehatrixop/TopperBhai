@@ -125,7 +125,7 @@ export default function StudyPlannerPage() {
     )
 
     try {
-      const res = await fetch('http://localhost:8000/api/v1/google/sync-study-plan', {
+      const res = await fetch(`${API_BASE_URL}/api/v1/google/sync-study-plan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -158,7 +158,7 @@ export default function StudyPlannerPage() {
     const localUserId = localStorage.getItem('taskQuest_localUserId')
     if (!googleConnected || !localUserId) return
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/google/delete-task-list/${localUserId}/${googleTaskListId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/google/delete-task-list/${localUserId}/${googleTaskListId}`, {
         method: 'DELETE'
       })
       if (!res.ok) {

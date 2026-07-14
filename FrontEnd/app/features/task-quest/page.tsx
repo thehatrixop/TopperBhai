@@ -24,6 +24,7 @@ import {
   ChevronRight,
   Check
 } from 'lucide-react'
+import { API_BASE_URL } from '@/lib/config'
 
 // Task Interface
 interface Task {
@@ -105,7 +106,7 @@ export default function TaskQuestPage() {
       if (permission !== 'granted') return
       const registration = await navigator.serviceWorker.ready
       
-      const keyRes = await fetch('http://localhost:8000/api/v1/notifications/vapid-public-key')
+      const keyRes = await fetch(`${API_BASE_URL}/api/v1/notifications/vapid-public-key`)
       if (!keyRes.ok) throw new Error("Failed to fetch VAPID key")
       const { public_key } = await keyRes.json()
       
@@ -118,7 +119,7 @@ export default function TaskQuestPage() {
         })
       }
       
-      await fetch('http://localhost:8000/api/v1/notifications/schedule-reminder', {
+      await fetch(`${API_BASE_URL}/api/v1/notifications/schedule-reminder`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -136,7 +137,7 @@ export default function TaskQuestPage() {
 
   const cancelScheduledReminder = async (taskId: string) => {
     try {
-      await fetch(`http://localhost:8000/api/v1/notifications/cancel-reminder/${taskId}`, {
+      await fetch(`${API_BASE_URL}/api/v1/notifications/cancel-reminder/${taskId}`, {
         method: 'DELETE'
       })
     } catch (err) {
@@ -154,7 +155,7 @@ export default function TaskQuestPage() {
       }
       const reminder_time = task.reminderTime ? new Date(task.reminderTime).toISOString() : undefined
 
-      const res = await fetch('http://localhost:8000/api/v1/google/sync-task', {
+      const res = await fetch(`${API_BASE_URL}/api/v1/google/sync-task`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -197,7 +198,7 @@ export default function TaskQuestPage() {
   const deleteGoogleTask = async (googleTaskId: string, googleCalendarEventId?: string) => {
     if (!googleConnected || !localUserId) return
     try {
-      const url = `http://localhost:8000/api/v1/google/delete-task/${localUserId}/${googleTaskId}` +
+      const url = `${API_BASE_URL}/api/v1/google/delete-task/${localUserId}/${googleTaskId}` +
         (googleCalendarEventId ? `?google_calendar_event_id=${googleCalendarEventId}` : '')
       await fetch(url, {
         method: 'DELETE'
@@ -211,7 +212,7 @@ export default function TaskQuestPage() {
     if (!localUserId) return
     try {
       const currentOriginUrl = window.location.origin + window.location.pathname
-      const res = await fetch(`http://localhost:8000/api/v1/google/auth-url?user_id=${localUserId}&frontend_url=${encodeURIComponent(currentOriginUrl)}`)
+      const res = await fetch(`${API_BASE_URL}/api/v1/google/auth-url?user_id=${localUserId}&frontend_url=${encodeURIComponent(currentOriginUrl)}`)
       if (!res.ok) throw new Error("Failed to fetch auth url")
       const { auth_url } = await res.json()
       window.location.href = auth_url
@@ -395,7 +396,7 @@ export default function TaskQuestPage() {
 
     const syncInterval = setInterval(async () => {
       try {
-        const res = await fetch(`http://localhost:8000/api/v1/google/get-tasks-status/${localUserId}`)
+        const res = await fetch(`${API_BASE_URL}/api/v1/google/get-tasks-status/${localUserId}`)
         if (!res.ok) {
           console.error("Failed to fetch Google Tasks status map")
           return
@@ -850,7 +851,7 @@ export default function TaskQuestPage() {
     const storedUserId = localStorage.getItem('taskQuest_localUserId')
     if (!isConnected || !storedUserId) return
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/google/delete-task-list/${storedUserId}/${googleTaskListId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/v1/google/delete-task-list/${storedUserId}/${googleTaskListId}`, {
         method: 'DELETE'
       })
       if (!res.ok) {
