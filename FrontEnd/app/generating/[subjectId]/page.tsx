@@ -99,7 +99,7 @@ export default function GeneratingPage() {
         const data = await response.json()
 
         if (!response.ok) {
-          throw new Error(data.detail || 'Generation failed')
+          throw new Error(data.message || data.detail || 'Generation failed')
         }
 
         // Store the full paper in localStorage for the success page
