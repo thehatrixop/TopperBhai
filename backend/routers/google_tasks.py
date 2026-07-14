@@ -465,7 +465,7 @@ async def get_tasks_status(user_id: str):
     list_id = await get_or_create_task_list(user_id, access_token)
     
     headers = {"Authorization": f"Bearer {access_token}"}
-    url = f"https://tasks.googleapis.com/tasks/v1/lists/{list_id}/tasks"
+    url = f"https://tasks.googleapis.com/tasks/v1/lists/{list_id}/tasks?showCompleted=true&showHidden=true"
     
     async with httpx.AsyncClient() as client:
         res = await client.get(url, headers=headers)
