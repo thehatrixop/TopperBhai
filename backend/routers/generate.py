@@ -227,6 +227,7 @@ def generate_questions_with_ai(
     client: OpenAI,
     model: str,
     existing_questions: list[str] = None,
+    template_questions: list[dict] = None,
 ) -> list[dict]:
 
     difficulty_desc = DIFFICULTY_MAP.get(challenge, f"{challenge} difficulty")
@@ -340,6 +341,18 @@ OUTPUT FORMAT (return this exact structure):
         user_prompt += "STRICT RULE: Do NOT generate questions identical or similar to the following existing questions:\n"
         for eq in existing_questions:
             user_prompt += f"- {eq}\n"
+        user_prompt += "\n"
+
+    if template_questions:
+        user_prompt += "EXAM QUESTION STYLE TEMPLATES (Analyze the style, formatting, complexity and depth of these questions and match them for the questions you generate):\n"
+        for idx, q in enumerate(template_questions, 1):
+            user_prompt += f"Template Question {idx}:\n"
+            user_prompt += f"Question Text: {q.get('question_text') or q.get('question')}\n"
+            opts = q.get("options")
+            if opts:
+                user_prompt += f"Options: {json.dumps(opts)}\n"
+            user_prompt += f"Correct Answer: {q.get('answer_key') or q.get('correct_answer')}\n"
+            user_prompt += f"Explanation: {q.get('solution') or q.get('explanation')}\n\n"
         user_prompt += "\n"
 
     user_prompt += (
@@ -536,6 +549,28 @@ def fetch_cached_questions_for_topics(topic_ids: list[str], challenge: str) -> l
     return all_questions
 
 
+def fetch_template_questions(topic_ids: list[str]) -> list[dict]:
+    # Try fetching from pyqs table first
+    try:
+        pyqs = fetch_pyqs_for_topics(topic_ids, limit_per_topic=5)
+        if pyqs and len(pyqs) >= 5:
+            random.shuffle(pyqs)
+            return pyqs[:10]
+    except Exception as e:
+        print(f"  [WARN] Failed to fetch template PYQs: {e}")
+    
+    # Fallback to generated_questions
+    try:
+        res = supabase.table("generated_questions").select("*").in_("topic_id", topic_ids).execute()
+        if res.data:
+            random.shuffle(res.data)
+            return res.data[:10]
+    except Exception as e:
+        print(f"  [WARN] Failed to fetch template generated questions: {e}")
+        
+    return []
+
+
 def cache_generated_questions(questions: list[dict], topic_name_to_id: dict, challenge: str):
     insert_data = []
     for q in questions:
@@ -600,7 +635,56 @@ def generate_paper(request: PaperRequest):
     topic_id_to_name = {t["id"]: t["name"] for t in topic_records.data}
     topic_name_to_id = {t["name"]: t["id"] for t in topic_records.data}
     num_topics = len(topic_records.data)
-    
+
+    # RULE 1: If num_topics > 5, reuse questions directly without any LLM call!
+    if num_topics > 5:
+        print(f"  [Routing Rule] More than 5 topics selected ({num_topics}). Reusing questions directly...")
+        
+        # 1. Fetch cached generated questions
+        raw_cached = fetch_cached_questions_for_topics(topic_ids, request.challenge)
+        pool = []
+        for q in raw_cached:
+            pool.append({
+                "topic":          topic_id_to_name.get(q.get("topic_id"), "General Topic"),
+                "question":       q["question_text"],
+                "options":        q["options"],
+                "correct_answer": q["correct_answer"],
+                "explanation":    q.get("explanation") or "No solution explanation available.",
+                "type":           q.get("question_type", "mcq")
+            })
+            
+        # 2. Fetch PYQs to populate the pool if we don't have enough generated questions
+        if len(pool) < request.question_count:
+            pyqs = fetch_pyqs_for_topics(topic_ids)
+            for q in pyqs:
+                pool.append({
+                    "topic":          topic_id_to_name.get(q.get("topic_id"), "General Topic"),
+                    "question":       q["question_text"],
+                    "options":        q["options"],
+                    "correct_answer": q["answer_key"],
+                    "explanation":    q.get("solution") or "No solution explanation available.",
+                    "type":           q.get("type", "mcq")
+                })
+                
+        # If we have questions, sample and return
+        if pool:
+            random.shuffle(pool)
+            selected = pool[:request.question_count]
+            for idx, q in enumerate(selected, 1):
+                q["id"] = idx
+            selected = _shuffle_options_for_questions(selected)
+            print(f"  [DB DIRECT] Returned {len(selected)} questions directly from cache/PYQ pool.")
+            return {
+                "status":           "success",
+                "topics_loaded":    num_topics,
+                "topics":           [t["name"] for t in topic_records.data],
+                "failed_topics":    [],
+                "challenge":        request.challenge,
+                "question_count":   len(selected),
+                "knowledge_chars":  0,
+                "questions":        selected,
+            }
+
     # 1.5 Fetch previously generated questions from cache
     cached_questions = []
     if request.include_generated_questions:
@@ -645,6 +729,12 @@ def generate_paper(request: PaperRequest):
 
     # Helper list of existing questions to pass to prompt
     existing_question_texts = [q["question"] for q in cached_questions]
+
+    # RULE 2: Fetch template questions if 3 <= num_topics <= 5
+    template_questions = None
+    if 3 <= num_topics <= 5:
+        print(f"  [Routing Rule] 3 <= num_topics <= 5 ({num_topics}). Fetching 10 template questions...")
+        template_questions = fetch_template_questions(topic_ids)
 
     import datetime
     current_year = datetime.date.today().year
@@ -697,6 +787,7 @@ def generate_paper(request: PaperRequest):
             client            = cerebras_client,
             model             = CEREBRAS_TEXT_MODEL,
             existing_questions = existing_question_texts,
+            template_questions = template_questions,
         )
 
         if questions:
@@ -745,6 +836,7 @@ def generate_paper(request: PaperRequest):
                 client            = cerebras_client,
                 model             = CEREBRAS_TEXT_MODEL,
                 existing_questions = existing_question_texts,
+                template_questions = template_questions,
             )
 
             if questions:
@@ -789,6 +881,7 @@ def generate_paper(request: PaperRequest):
                 client            = cerebras_client,
                 model             = CEREBRAS_TEXT_MODEL,
                 existing_questions = existing_question_texts,
+                template_questions = template_questions,
             )
 
             if questions:
@@ -918,6 +1011,7 @@ def generate_paper(request: PaperRequest):
             client            = cerebras_client,
             model             = CEREBRAS_TEXT_MODEL,
             existing_questions = existing_question_texts,
+            template_questions = template_questions,
         )
 
         if questions:
