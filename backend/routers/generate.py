@@ -21,7 +21,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 LOCAL_SAVE_DIR = BASE_DIR / "dataset" / "temporary data"
 
 # Groq: used ONLY for vision (PDF page transcription)
-VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+VISION_MODEL = "llama-3.2-11b-vision-preview"
 
 # Challenge id → human difficulty label
 DIFFICULTY_MAP = {

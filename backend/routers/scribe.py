@@ -6,7 +6,7 @@ from groq import Groq
 
 router = APIRouter()
 
-VISION_MODEL = "llama-3.2-90b-vision-preview"
+VISION_MODEL = "llama-3.2-11b-vision-preview"
 
 _groq_client = None
 
