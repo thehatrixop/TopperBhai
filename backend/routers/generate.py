@@ -438,7 +438,7 @@ def fix_statement_options(questions: list[dict]) -> list[dict]:
                 break
                 
         if is_statement or has_truncated_opts:
-            print(f"  [REPAIR] Fixing statement options for question: '{q.get('question')[:50]}...'")
+            print(f"  [REPAIR] Fixing statement options for question: '{(q.get('question') or '')[:50]}...'")
             new_opts = {}
             for k, v in opts.items():
                 v_lower = str(v).strip().lower()
@@ -610,13 +610,24 @@ def cache_generated_questions(questions: list[dict], topic_name_to_id: dict, cha
                 topic_id = list(topic_name_to_id.values())[0]
         if not topic_id:
             continue
+            
+        q_type = q.get("type", "mcq")
+        q_text = q.get("question")
+        if not q_text:
+            if q_type == "assertion_reason":
+                assertion = q.get("assertion", "")
+                reason = q.get("reason", "")
+                q_text = f"Assertion (A): {assertion}\nReason (R): {reason}"
+            else:
+                q_text = q.get("question_text") or q.get("text") or "Empty question text"
+
         insert_data.append({
             "topic_id": topic_id,
-            "question_text": q["question"],
+            "question_text": q_text,
             "options": q.get("options") or {},
-            "correct_answer": q["correct_answer"],
-            "explanation": q.get("explanation"),
-            "question_type": q.get("type", "mcq"),
+            "correct_answer": q.get("correct_answer") or q.get("answer") or "A",
+            "explanation": q.get("explanation") or q.get("solution") or "No explanation provided.",
+            "question_type": q_type,
             "challenge": challenge
         })
     if insert_data:
