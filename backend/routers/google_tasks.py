@@ -31,9 +31,16 @@ class TaskSyncRequest(BaseModel):
     reminder_time: Optional[str] = None  # ISO-8601 UTC string for calendar events
 
 @router.get("/google/auth-url")
-def get_auth_url(user_id: str = Query(..., description="The local anonymous user UUID from localStorage")):
+def get_auth_url(
+    user_id: str = Query(..., description="The local anonymous user UUID from localStorage"),
+    frontend_url: Optional[str] = Query(None, description="The frontend URL to redirect back to after auth")
+):
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=500, detail="Google Client ID is not configured on the backend.")
+        
+    state = user_id
+    if frontend_url:
+        state = f"{user_id}@@{frontend_url}"
         
     scope = "https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/calendar.events"
     params = {
@@ -41,7 +48,7 @@ def get_auth_url(user_id: str = Query(..., description="The local anonymous user
         "client_id": GOOGLE_CLIENT_ID,
         "redirect_uri": GOOGLE_REDIRECT_URI,
         "scope": scope,
-        "state": user_id,
+        "state": state,
         "access_type": "offline",
         "prompt": "consent"
     }
@@ -50,13 +57,20 @@ def get_auth_url(user_id: str = Query(..., description="The local anonymous user
 
 @router.get("/google/callback")
 async def google_callback(code: str = None, error: str = None, state: str = None):
-    if error:
-        return RedirectResponse(url=f"{FRONTEND_REDIRECT_URL}?google_error={error}")
-    if not code or not state:
-        return RedirectResponse(url=f"{FRONTEND_REDIRECT_URL}?google_error=missing_params")
-        
     user_id = state
+    target_frontend_url = FRONTEND_REDIRECT_URL
     
+    if state and "@@" in state:
+        parts = state.split("@@", 1)
+        user_id = parts[0]
+        if len(parts) > 1 and parts[1]:
+            target_frontend_url = parts[1]
+
+    if error:
+        return RedirectResponse(url=f"{target_frontend_url}?google_error={error}")
+    if not code or not state:
+        return RedirectResponse(url=f"{target_frontend_url}?google_error=missing_params")
+        
     # Exchange code for tokens
     async with httpx.AsyncClient() as client:
         token_res = await client.post(
@@ -71,7 +85,7 @@ async def google_callback(code: str = None, error: str = None, state: str = None
         )
         
     if token_res.status_code != 200:
-        return RedirectResponse(url=f"{FRONTEND_REDIRECT_URL}?google_error=token_exchange_failed")
+        return RedirectResponse(url=f"{target_frontend_url}?google_error=token_exchange_failed")
         
     tokens = token_res.json()
     access_token = tokens.get("access_token")
@@ -98,12 +112,12 @@ async def google_callback(code: str = None, error: str = None, state: str = None
         else:
             if not refresh_token:
                 # If we don't have a refresh token and it's a new registration, redirect to consent prompt again
-                return RedirectResponse(url=f"{FRONTEND_REDIRECT_URL}?google_error=consent_required")
+                return RedirectResponse(url=f"{target_frontend_url}?google_error=consent_required")
             supabase.table("user_google_tokens").insert(payload).execute()
             
-        return RedirectResponse(url=f"{FRONTEND_REDIRECT_URL}?google_connected=true")
+        return RedirectResponse(url=f"{target_frontend_url}?google_connected=true")
     except Exception as e:
-        return RedirectResponse(url=f"{FRONTEND_REDIRECT_URL}?google_error=database_error&msg={str(e)}")
+        return RedirectResponse(url=f"{target_frontend_url}?google_error=database_error&msg={str(e)}")
 
 # Helper to get authenticated client, refreshing tokens if expired
 async def get_google_access_token(user_id: str) -> str:

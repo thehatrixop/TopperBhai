@@ -210,7 +210,8 @@ export default function TaskQuestPage() {
   const handleConnectGoogle = async () => {
     if (!localUserId) return
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/google/auth-url?user_id=${localUserId}`)
+      const currentOriginUrl = window.location.origin + window.location.pathname
+      const res = await fetch(`http://localhost:8000/api/v1/google/auth-url?user_id=${localUserId}&frontend_url=${encodeURIComponent(currentOriginUrl)}`)
       if (!res.ok) throw new Error("Failed to fetch auth url")
       const { auth_url } = await res.json()
       window.location.href = auth_url
