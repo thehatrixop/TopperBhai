@@ -45,6 +45,43 @@ async def global_exception_handler(request, exc):
         headers=headers
     )
 
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request, exc):
+    print("=== HTTP EXCEPTION HANDLED ===")
+    headers = {
+        "Access-Control-Allow-Origin": "https://topper-bhai.vercel.app",
+        "Access-Control-Allow-Credentials": "true"
+    }
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "status": "error",
+            "message": exc.detail,
+            "traceback": ""
+        },
+        headers=headers
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    print("=== VALIDATION EXCEPTION HANDLED ===")
+    headers = {
+        "Access-Control-Allow-Origin": "https://topper-bhai.vercel.app",
+        "Access-Control-Allow-Credentials": "true"
+    }
+    return JSONResponse(
+        status_code=422,
+        content={
+            "status": "error",
+            "message": str(exc.errors()),
+            "traceback": ""
+        },
+        headers=headers
+    )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
