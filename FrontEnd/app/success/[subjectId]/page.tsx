@@ -562,9 +562,8 @@ export default function SuccessPage() {
                         }
                         
                         setExpandedId(targetId)
+                        setActiveQuestionTime(questionTimes[targetId] || 0)
                         if (!selectedAnswers[targetId]) {
-                          // Resume from previously accumulated time if present, else 0
-                          setActiveQuestionTime(questionTimes[targetId] || 0)
                           setActiveQuestionTimerRunning(true)
                         } else {
                           setActiveQuestionTimerRunning(false)
