@@ -77,6 +77,11 @@ def transcribe_page_with_vision(page: fitz.Page, page_num: int, client: Groq) ->
 
 # ── Download PDF + transcribe all pages ──────────────────────────────────────
 def download_pdf_text(notes_url: str, topic_name: str) -> str:
+    if not notes_url:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No notes PDF URL available for topic '{topic_name}' to perform vision OCR transcription."
+        )
     local_path = LOCAL_SAVE_DIR / notes_url
     pdf_bytes = None
 
@@ -553,6 +558,11 @@ def get_topic_content_text(topic: dict) -> str:
         print(f"  [DB CACHE MISS/ERR] Could not fetch from topic_content table for {topic_name}: {e}")
         
     # 2. Fall back to downloading PDF and transcribing via Groq Vision OCR
+    if not notes_url:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No study notes PDF URL or cached content available for topic '{topic_name}'."
+        )
     print(f"  [DB CACHE MISS] Falling back to sequential PDF vision OCR transcription for: {topic_name}")
     return download_pdf_text(notes_url, topic_name)
 

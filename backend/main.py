@@ -22,7 +22,29 @@ from routers.study_plan import router as study_plan_router
 allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,https://topper-bhai.vercel.app")
 allowed_origins = [origin.strip().rstrip("/") for origin in allowed_origins_str.split(",") if origin.strip()]
 
+from fastapi.responses import JSONResponse
+import traceback
+
 app = FastAPI()
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    print("=== GLOBAL EXCEPTION HANDLED ===")
+    traceback.print_exc()
+    headers = {
+        "Access-Control-Allow-Origin": "https://topper-bhai.vercel.app",
+        "Access-Control-Allow-Credentials": "true"
+    }
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status": "error",
+            "message": str(exc),
+            "traceback": traceback.format_exc()
+        },
+        headers=headers
+    )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
