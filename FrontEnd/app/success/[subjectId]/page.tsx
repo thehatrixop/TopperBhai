@@ -100,6 +100,28 @@ export default function SuccessPage() {
   const [activeQuestionTimerRunning, setActiveQuestionTimerRunning] = useState<boolean>(false)
   const [questionTimes, setQuestionTimes] = useState<Record<number, number>>({})
 
+  // Test-wide timer states (starts on first question expand, ends on submit)
+  const [testTimeTaken, setTestTimeTaken] = useState<number>(0)
+  const [testTimerActive, setTestTimerActive] = useState<boolean>(false)
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null
+    if (testTimerActive && !isSubmitted) {
+      interval = setInterval(() => {
+        setTestTimeTaken(prev => prev + 1)
+      }, 1000)
+    }
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [testTimerActive, isSubmitted])
+
+  useEffect(() => {
+    if (expandedId !== null && !testTimerActive && !isSubmitted) {
+      setTestTimerActive(true)
+    }
+  }, [expandedId, testTimerActive, isSubmitted])
+
   // Tick hook for active question timer
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null
@@ -255,12 +277,9 @@ export default function SuccessPage() {
     )
   }
 
-  const totalActiveSolveTime = Object.entries(questionTimes).reduce((sum, [id, val]) => {
-    if (expandedId !== null && Number(id) === expandedId && !selectedAnswers[expandedId]) {
-      return sum
-    }
-    return sum + val
-  }, 0) + (expandedId !== null && !selectedAnswers[expandedId] ? activeQuestionTime : 0)
+  const totalActiveSolveTime = paper?.timeLimit && paper.timeLimit !== 'none'
+    ? (totalLimit - timeRemaining)
+    : testTimeTaken
 
   const typeCounts = paper.questions.reduce((acc, q) => {
     const qType = q.type || 'mcq'
