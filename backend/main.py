@@ -19,7 +19,7 @@ from routers.community import router as community_router
 from routers.study_plan import router as study_plan_router
 
 # Parse allowed origins from environment variable
-allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
+allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,https://topper-bhai.vercel.app")
 allowed_origins = [origin.strip().rstrip("/") for origin in allowed_origins_str.split(",") if origin.strip()]
 
 app = FastAPI()
