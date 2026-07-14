@@ -19,3 +19,17 @@ services:
         sync: false
       - key: ALLOWED_ORIGINS
         value: "https://topper-bhai.vercel.app"
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: FRONTEND_REDIRECT_URL
+        sync: false
