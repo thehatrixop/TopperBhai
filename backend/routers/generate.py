@@ -226,6 +226,7 @@ def generate_questions_with_ai(
     question_count: int,
     client: OpenAI,
     model: str,
+    existing_questions: list[str] = None,
 ) -> list[dict]:
 
     difficulty_desc = DIFFICULTY_MAP.get(challenge, f"{challenge} difficulty")
@@ -334,6 +335,14 @@ OUTPUT FORMAT (return this exact structure):
         f"Generate exactly {question_count} questions of mixed types (MCQ, MSQ, FITB, Assertion-Reason, Matching).\n"
         f"Difficulty: {difficulty_desc}\n"
         f"Topics: {', '.join(topics)}\n\n"
+    )
+    if existing_questions:
+        user_prompt += "STRICT RULE: Do NOT generate questions identical or similar to the following existing questions:\n"
+        for eq in existing_questions:
+            user_prompt += f"- {eq}\n"
+        user_prompt += "\n"
+
+    user_prompt += (
         f"STUDY MATERIAL:\n{knowledge_context}\n\n"
         f"Return exactly {question_count} questions in the specified JSON format."
     )
@@ -513,6 +522,53 @@ def get_topic_content_text(topic: dict) -> str:
     return download_pdf_text(notes_url, topic_name)
 
 
+def fetch_cached_questions_for_topics(topic_ids: list[str], challenge: str) -> list[dict]:
+    if not topic_ids:
+        return []
+    all_questions = []
+    for topic_id in topic_ids:
+        try:
+            res = supabase.table("generated_questions").select("*").eq("topic_id", topic_id).eq("challenge", challenge).execute()
+            if res.data:
+                all_questions.extend(res.data)
+        except Exception as e:
+            print(f"  [WARN] Failed to fetch cached questions for topic {topic_id}: {e}")
+    return all_questions
+
+
+def cache_generated_questions(questions: list[dict], topic_name_to_id: dict, challenge: str):
+    insert_data = []
+    for q in questions:
+        topic_name = q.get("topic")
+        topic_id = topic_name_to_id.get(topic_name)
+        if not topic_id and topic_name_to_id:
+            # Fallback: check case-insensitive or partial match
+            for name, tid in topic_name_to_id.items():
+                if name.lower() in str(topic_name).lower() or str(topic_name).lower() in name.lower():
+                    topic_id = tid
+                    break
+            else:
+                # Absolute fallback: first topic ID
+                topic_id = list(topic_name_to_id.values())[0]
+        if not topic_id:
+            continue
+        insert_data.append({
+            "topic_id": topic_id,
+            "question_text": q["question"],
+            "options": q.get("options") or {},
+            "correct_answer": q["correct_answer"],
+            "explanation": q.get("explanation"),
+            "question_type": q.get("type", "mcq"),
+            "challenge": challenge
+        })
+    if insert_data:
+        try:
+            supabase.table("generated_questions").insert(insert_data).execute()
+            print(f"  [DB CACHE] Successfully saved {len(insert_data)} generated questions to database.")
+        except Exception as e:
+            print(f"  [WARN] Failed to save generated questions to database: {e}")
+
+
 # ── Main endpoint ─────────────────────────────────────────────────────────────
 @router.post("/generate-paper")
 def generate_paper(request: PaperRequest):
@@ -542,8 +598,54 @@ def generate_paper(request: PaperRequest):
 
     topic_ids = [t["id"] for t in topic_records.data]
     topic_id_to_name = {t["id"]: t["name"] for t in topic_records.data}
+    topic_name_to_id = {t["name"]: t["id"] for t in topic_records.data}
     num_topics = len(topic_records.data)
     
+    # 1.5 Fetch previously generated questions from cache
+    cached_questions = []
+    if request.include_generated_questions:
+        raw_cached = fetch_cached_questions_for_topics(topic_ids, request.challenge)
+        for idx, q in enumerate(raw_cached, 1):
+            cached_questions.append({
+                "id":             idx,
+                "topic":          topic_id_to_name.get(q.get("topic_id"), "General Topic"),
+                "question":       q["question_text"],
+                "options":        q["options"],
+                "correct_answer": q["correct_answer"],
+                "explanation":    q.get("explanation") or "No solution explanation available.",
+                "type":           q.get("question_type", "mcq")
+            })
+
+    # If cache has enough questions, return directly!
+    if request.include_generated_questions and len(cached_questions) >= request.question_count:
+        random.shuffle(cached_questions)
+        selected_questions = cached_questions[:request.question_count]
+        # Re-index
+        for idx, q in enumerate(selected_questions, 1):
+            q["id"] = idx
+        selected_questions = _shuffle_options_for_questions(selected_questions)
+        
+        print(f"  [DB CACHE FULL HIT] Bypassed AI entirely. Returned {len(selected_questions)} cached questions.")
+        return {
+            "status":           "success",
+            "topics_loaded":    num_topics,
+            "topics":           [t["name"] for t in topic_records.data],
+            "failed_topics":    [],
+            "challenge":        request.challenge,
+            "question_count":   len(selected_questions),
+            "knowledge_chars":  0,
+            "questions":        selected_questions,
+        }
+
+    # Otherwise, calculate how many remaining questions to generate
+    remaining_count = request.question_count
+    if request.include_generated_questions:
+        remaining_count -= len(cached_questions)
+        print(f"  [DB CACHE PARTIAL HIT] Found {len(cached_questions)} cached questions. Remaining to generate: {remaining_count}")
+
+    # Helper list of existing questions to pass to prompt
+    existing_question_texts = [q["question"] for q in cached_questions]
+
     import datetime
     current_year = datetime.date.today().year
 
@@ -591,10 +693,18 @@ def generate_paper(request: PaperRequest):
             knowledge_context = knowledge_context,
             topics            = [t["name"] for t in topic_texts],
             challenge         = request.challenge,
-            question_count    = request.question_count,
+            question_count    = remaining_count,
             client            = cerebras_client,
             model             = CEREBRAS_TEXT_MODEL,
+            existing_questions = existing_question_texts,
         )
+
+        if questions:
+            cache_generated_questions(questions, topic_name_to_id, request.challenge)
+
+        combined_questions = cached_questions + questions
+        for idx, q in enumerate(combined_questions, 1):
+            q["id"] = idx
 
         return {
             "status":           "success",
@@ -602,9 +712,9 @@ def generate_paper(request: PaperRequest):
             "topics":           [t["name"] for t in topic_texts],
             "failed_topics":    failed_topics,
             "challenge":        request.challenge,
-            "question_count":   len(questions),
+            "question_count":   len(combined_questions),
             "knowledge_chars":  len(knowledge_context),
-            "questions":        questions,
+            "questions":        combined_questions,
         }
 
     # Option B: Only PYQs (Notes Unchecked, PYQs Checked)
@@ -631,19 +741,28 @@ def generate_paper(request: PaperRequest):
                 knowledge_context = knowledge_context,
                 topics            = [t["name"] for t in topic_records.data],
                 challenge         = request.challenge,
-                question_count    = request.question_count,
+                question_count    = remaining_count,
                 client            = cerebras_client,
                 model             = CEREBRAS_TEXT_MODEL,
+                existing_questions = existing_question_texts,
             )
+
+            if questions:
+                cache_generated_questions(questions, topic_name_to_id, request.challenge)
+
+            combined_questions = cached_questions + questions
+            for idx, q in enumerate(combined_questions, 1):
+                q["id"] = idx
+
             return {
                 "status":           "success",
                 "topics_loaded":    num_topics,
                 "topics":           [t["name"] for t in topic_records.data],
                 "failed_topics":    [],
                 "challenge":        request.challenge,
-                "question_count":   len(questions),
+                "question_count":   len(combined_questions),
                 "knowledge_chars":  len(knowledge_context),
-                "questions":        questions,
+                "questions":        combined_questions,
             }
 
         # Branch B.2: 4 to 5 topics -> use PYQ of last 3 years
@@ -666,19 +785,28 @@ def generate_paper(request: PaperRequest):
                 knowledge_context = knowledge_context,
                 topics            = [t["name"] for t in topic_records.data],
                 challenge         = request.challenge,
-                question_count    = request.question_count,
+                question_count    = remaining_count,
                 client            = cerebras_client,
                 model             = CEREBRAS_TEXT_MODEL,
+                existing_questions = existing_question_texts,
             )
+
+            if questions:
+                cache_generated_questions(questions, topic_name_to_id, request.challenge)
+
+            combined_questions = cached_questions + questions
+            for idx, q in enumerate(combined_questions, 1):
+                q["id"] = idx
+
             return {
                 "status":           "success",
                 "topics_loaded":    num_topics,
                 "topics":           [t["name"] for t in topic_records.data],
                 "failed_topics":    [],
                 "challenge":        request.challenge,
-                "question_count":   len(questions),
+                "question_count":   len(combined_questions),
                 "knowledge_chars":  len(knowledge_context),
-                "questions":        questions,
+                "questions":        combined_questions,
             }
 
         # Branch B.3: > 5 topics -> complete PYQ data with script-based random selection (No AI)
@@ -786,10 +914,18 @@ def generate_paper(request: PaperRequest):
             knowledge_context = knowledge_context,
             topics            = [t["name"] for t in topic_records.data],
             challenge         = request.challenge,
-            question_count    = request.question_count,
+            question_count    = remaining_count,
             client            = cerebras_client,
             model             = CEREBRAS_TEXT_MODEL,
+            existing_questions = existing_question_texts,
         )
+
+        if questions:
+            cache_generated_questions(questions, topic_name_to_id, request.challenge)
+
+        combined_questions = cached_questions + questions
+        for idx, q in enumerate(combined_questions, 1):
+            q["id"] = idx
 
         return {
             "status":           "success",
@@ -797,7 +933,7 @@ def generate_paper(request: PaperRequest):
             "topics":           [t["name"] for t in topic_records.data],
             "failed_topics":    failed_topics,
             "challenge":        request.challenge,
-            "question_count":   len(questions),
+            "question_count":   len(combined_questions),
             "knowledge_chars":  len(knowledge_context),
-            "questions":        questions,
+            "questions":        combined_questions,
         }

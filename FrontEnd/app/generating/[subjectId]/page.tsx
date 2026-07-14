@@ -41,6 +41,7 @@ export default function GeneratingPage() {
   const questions    = searchParams.get('questions') || '10'
   const includeNotes = searchParams.get('notes') !== 'false'
   const includePyqs   = searchParams.get('pyqs') !== 'false'
+  const includeGenerated = searchParams.get('generated') !== 'false'
   const timeLimit    = searchParams.get('timeLimit') || 'none'
   const { language, setLanguage, t } = useLanguage()
 
@@ -93,6 +94,7 @@ export default function GeneratingPage() {
             question_count: Number(questions),
             include_notes:  includeNotes,
             include_pyqs:   includePyqs,
+            include_generated_questions: includeGenerated,
           }),
         })
 
