@@ -17,6 +17,8 @@ from routers.scribe import router as scribe_router
 from routers.manga import router as manga_router
 from routers.community import router as community_router
 from routers.study_plan import router as study_plan_router
+from routers.notifications import router as notifications_router, start_scheduler_thread
+from routers.google_tasks import router as google_tasks_router
 
 # Parse allowed origins from environment variable
 allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,https://topper-bhai.vercel.app")
@@ -26,6 +28,10 @@ from fastapi.responses import JSONResponse
 import traceback
 
 app = FastAPI()
+
+@app.on_event("startup")
+def on_startup():
+    start_scheduler_thread()
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
@@ -138,5 +144,15 @@ app.include_router(
 
 app.include_router(
     study_plan_router,
+    prefix="/api/v1"
+)
+
+app.include_router(
+    notifications_router,
+    prefix="/api/v1"
+)
+
+app.include_router(
+    google_tasks_router,
     prefix="/api/v1"
 )

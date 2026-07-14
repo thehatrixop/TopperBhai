@@ -35,6 +35,7 @@ interface Task {
   tags: string[]
   reminderTime?: string // datetime-local format: "YYYY-MM-DDTHH:MM"
   notified?: boolean
+  googleTaskId?: string
 }
 
 type ColumnStatus = Task['status']
@@ -73,6 +74,134 @@ export default function TaskQuestPage() {
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'kanban' | 'studyPlan'>('kanban')
   const [expandedWeeks, setExpandedWeeks] = useState<Record<number, boolean>>({ 1: true })
+
+  // Google Sync & Web Push States
+  const [googleConnected, setGoogleConnected] = useState<boolean>(false)
+  const [localUserId, setLocalUserId] = useState<string>('')
+
+  // Push Subscription Helper
+  const urlBase64ToUint8Array = (base64String: string) => {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4)
+    const base64 = (base64String + padding)
+      .replace(/\-/g, '+')
+      .replace(/_/g, '/')
+    const rawData = window.atob(base64)
+    const outputArray = new Uint8Array(rawData.length)
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i)
+    }
+    return outputArray
+  }
+
+  // Web Push API scheduling call
+  const subscribeToPushAndSchedule = async (taskId: string, title: string, description: string, reminderTime: string) => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      console.warn("Push notifications not supported by this browser.")
+      return
+    }
+    try {
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') return
+      const registration = await navigator.serviceWorker.ready
+      
+      const keyRes = await fetch('http://localhost:8000/api/v1/notifications/vapid-public-key')
+      if (!keyRes.ok) throw new Error("Failed to fetch VAPID key")
+      const { public_key } = await keyRes.json()
+      
+      const applicationServerKey = urlBase64ToUint8Array(public_key)
+      let subscription = await registration.pushManager.getSubscription()
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey
+        })
+      }
+      
+      await fetch('http://localhost:8000/api/v1/notifications/schedule-reminder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task_id: taskId,
+          subscription: subscription.toJSON(),
+          title,
+          description,
+          reminder_time: new Date(reminderTime).toISOString()
+        })
+      })
+    } catch (err) {
+      console.error("Push subscription and scheduling failed:", err)
+    }
+  }
+
+  const cancelScheduledReminder = async (taskId: string) => {
+    try {
+      await fetch(`http://localhost:8000/api/v1/notifications/cancel-reminder/${taskId}`, {
+        method: 'DELETE'
+      })
+    } catch (err) {
+      console.error("Failed to cancel scheduled reminder:", err)
+    }
+  }
+
+  // Google Tasks Sync HTTP requests
+  const syncTaskToGoogle = async (task: Task): Promise<string | undefined> => {
+    if (!googleConnected || !localUserId) return
+    try {
+      let due_date = undefined
+      if (task.reminderTime) {
+        due_date = task.reminderTime.split('T')[0]
+      }
+      const res = await fetch('http://localhost:8000/api/v1/google/sync-task', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: localUserId,
+          task_id: task.id,
+          title: task.title,
+          description: task.description,
+          due_date,
+          status: task.status,
+          google_task_id: task.googleTaskId
+        })
+      })
+      if (res.ok) {
+        const data = await res.json()
+        return data.google_task_id
+      }
+    } catch (err) {
+      console.error("Google task sync failed:", err)
+    }
+    return undefined
+  }
+
+  const deleteGoogleTask = async (googleTaskId: string) => {
+    if (!googleConnected || !localUserId) return
+    try {
+      await fetch(`http://localhost:8000/api/v1/google/delete-task/${localUserId}/${googleTaskId}`, {
+        method: 'DELETE'
+      })
+    } catch (err) {
+      console.error("Failed to delete task from Google:", err)
+    }
+  }
+
+  const handleConnectGoogle = async () => {
+    if (!localUserId) return
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/google/auth-url?user_id=${localUserId}`)
+      if (!res.ok) throw new Error("Failed to fetch auth url")
+      const { auth_url } = await res.json()
+      window.location.href = auth_url
+    } catch (err) {
+      console.error(err)
+      alert("Failed to connect to Google Tasks")
+    }
+  }
+
+  const handleDisconnectGoogle = () => {
+    localStorage.removeItem('taskQuest_googleConnected')
+    setGoogleConnected(false)
+  }
 
   // Form States
   const [taskTitle, setTaskTitle] = useState('')
@@ -117,12 +246,27 @@ export default function TaskQuestPage() {
       }
     }
 
-    // Check notification permission state and local preference
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      const hasPermission = Notification.permission === 'granted'
-      const localPref = localStorage.getItem('taskQuest_remindersEnabled') !== 'false'
-      setNotificationsEnabled(hasPermission && localPref)
+    // Register Service Worker for Web Push
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => console.log('Service Worker registered successfully:', reg.scope))
+        .catch(err => console.error('Service Worker registration failed:', err))
     }
+
+    // Google OAuth integration init
+    let userId = localStorage.getItem('taskQuest_localUserId')
+    if (!userId) {
+      userId = 'user_' + Math.random().toString(36).substring(2, 15)
+      localStorage.setItem('taskQuest_localUserId', userId)
+    }
+    setLocalUserId(userId)
+
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('google_connected') === 'true') {
+      localStorage.setItem('taskQuest_googleConnected', 'true')
+      window.history.replaceState({}, document.title, window.location.pathname)
+    }
+    setGoogleConnected(localStorage.getItem('taskQuest_googleConnected') === 'true')
   }, [])
 
   // Sync state to local storage when tasks change
@@ -285,17 +429,34 @@ export default function TaskQuestPage() {
     }
   }
 
-  const handleDrop = (e: React.DragEvent, targetStatus: ColumnStatus) => {
+  const handleDrop = async (e: React.DragEvent, targetStatus: ColumnStatus) => {
     e.preventDefault()
     const taskId = e.dataTransfer.getData('text/plain') || draggedTaskId
     if (taskId) {
-      const nextTasks = tasks.map(task => {
-        if (task.id === taskId) {
-          return { ...task, status: targetStatus, notified: targetStatus === 'completed' ? true : task.notified }
+      const task = tasks.find(t => t.id === taskId)
+      if (task) {
+        let updatedTask: Task = {
+          ...task,
+          status: targetStatus,
+          notified: targetStatus === 'completed' ? true : task.notified
         }
-        return task
-      })
-      saveTasks(nextTasks)
+
+        // Cancel reminder if task is marked complete
+        if (targetStatus === 'completed' && task.reminderTime) {
+          await cancelScheduledReminder(taskId)
+        }
+
+        // Sync status to Google Tasks
+        if (googleConnected) {
+          const gTaskId = await syncTaskToGoogle(updatedTask)
+          if (gTaskId) {
+            updatedTask.googleTaskId = gTaskId
+          }
+        }
+
+        const nextTasks = tasks.map(t => t.id === taskId ? updatedTask : t)
+        saveTasks(nextTasks)
+      }
     }
     setDraggedTaskId(null)
     setDragOverColumn(null)
@@ -329,7 +490,7 @@ export default function TaskQuestPage() {
     setShowAddModal(true)
   }
 
-  const handleSaveTask = (e: React.FormEvent) => {
+  const handleSaveTask = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!taskTitle.trim()) return
 
@@ -340,26 +501,41 @@ export default function TaskQuestPage() {
 
     if (editingTask) {
       // Edit mode
-      const nextTasks = tasks.map(task => {
-        if (task.id === editingTask.id) {
-          return {
-            ...task,
-            title: taskTitle.trim(),
-            description: taskDesc.trim(),
-            status: taskStatus,
-            priority: taskPriority,
-            tags: parsedTags,
-            reminderTime: taskReminder || undefined,
-            notified: taskReminder !== task.reminderTime ? false : task.notified
-          }
+      let updatedTask: Task = {
+        ...editingTask,
+        title: taskTitle.trim(),
+        description: taskDesc.trim(),
+        status: taskStatus,
+        priority: taskPriority,
+        tags: parsedTags,
+        reminderTime: taskReminder || undefined,
+        notified: taskReminder !== editingTask.reminderTime ? false : editingTask.notified
+      }
+
+      // Sync task changes to Google Tasks
+      if (googleConnected) {
+        const gTaskId = await syncTaskToGoogle(updatedTask)
+        if (gTaskId) {
+          updatedTask.googleTaskId = gTaskId
         }
-        return task
-      })
+      }
+
+      // Web Push Reminder schedule changes
+      if (taskReminder) {
+        if (taskReminder !== editingTask.reminderTime) {
+          await subscribeToPushAndSchedule(editingTask.id, updatedTask.title, updatedTask.description, taskReminder)
+        }
+      } else if (editingTask.reminderTime) {
+        await cancelScheduledReminder(editingTask.id)
+      }
+
+      const nextTasks = tasks.map(task => task.id === editingTask.id ? updatedTask : task)
       saveTasks(nextTasks)
     } else {
       // Add mode
-      const newTask: Task = {
-        id: Math.random().toString(36).substring(2, 9),
+      const tempId = Math.random().toString(36).substring(2, 9)
+      let newTask: Task = {
+        id: tempId,
         title: taskTitle.trim(),
         description: taskDesc.trim(),
         status: taskStatus,
@@ -368,13 +544,36 @@ export default function TaskQuestPage() {
         reminderTime: taskReminder || undefined,
         notified: false
       }
+
+      // Sync new task to Google Tasks
+      if (googleConnected) {
+        const gTaskId = await syncTaskToGoogle(newTask)
+        if (gTaskId) {
+          newTask.googleTaskId = gTaskId
+        }
+      }
+
+      // Web Push Reminder scheduling
+      if (taskReminder) {
+        await subscribeToPushAndSchedule(tempId, newTask.title, newTask.description, taskReminder)
+      }
+
       saveTasks([...tasks, newTask])
     }
 
     setShowAddModal(false)
   }
 
-  const handleDeleteTask = (taskId: string) => {
+  const handleDeleteTask = async (taskId: string) => {
+    const taskToDelete = tasks.find(t => t.id === taskId)
+    if (taskToDelete) {
+      if (taskToDelete.googleTaskId) {
+        await deleteGoogleTask(taskToDelete.googleTaskId)
+      }
+      if (taskToDelete.reminderTime) {
+        await cancelScheduledReminder(taskId)
+      }
+    }
     const nextTasks = tasks.filter(task => task.id !== taskId)
     saveTasks(nextTasks)
     if (editingTask && editingTask.id === taskId) {
@@ -520,6 +719,26 @@ export default function TaskQuestPage() {
 
         {/* Right side: Language, Bell and CTA */}
         <div className="hidden lg:flex items-center gap-4">
+          {/* Google Tasks Connection Button */}
+          {googleConnected ? (
+            <button
+              onClick={handleDisconnectGoogle}
+              className="px-4 py-2 border-2 border-green-500 bg-green-500/10 text-green-500 text-xs font-black uppercase tracking-wider rounded transition-all cursor-pointer flex items-center gap-2 shadow-[2px_2px_0_rgba(0,0,0,1)] hover:translate-y-[-1px] active:translate-y-0"
+              title="Disconnect Google Tasks"
+            >
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-ping" />
+              <span>Google Connected</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleConnectGoogle}
+              className="px-4 py-2 border-2 border-topper-graphite bg-topper-charcoal/40 text-topper-off-white hover:border-topper-amber text-xs font-black uppercase tracking-wider rounded transition-all cursor-pointer flex items-center gap-2 shadow-[2px_2px_0_rgba(0,0,0,1)] hover:translate-y-[-1px] active:translate-y-0"
+              title="Connect Google Tasks"
+            >
+              <span>Connect Google Tasks</span>
+            </button>
+          )}
+
           {/* Browser Notifications Activation Bell */}
           <button
             onClick={requestNotificationPermission}
@@ -606,6 +825,25 @@ export default function TaskQuestPage() {
                   </Link>
                 ))}
                 
+                <div className="flex items-center justify-between py-3 px-4 rounded-xl hover:bg-topper-graphite/30">
+                  <span className="text-[15px] font-semibold text-topper-off-white/80">Google Tasks</span>
+                  {googleConnected ? (
+                    <button
+                      onClick={handleDisconnectGoogle}
+                      className="px-3 py-1.5 border border-green-500 text-green-500 text-xs font-bold rounded-lg bg-green-500/10 cursor-pointer"
+                    >
+                      Connected
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleConnectGoogle}
+                      className="px-3 py-1.5 border border-topper-graphite text-topper-off-white text-xs font-bold rounded-lg hover:border-topper-amber cursor-pointer"
+                    >
+                      Connect
+                    </button>
+                  )}
+                </div>
+
                 <div className="flex items-center justify-between py-3 px-4 rounded-xl hover:bg-topper-graphite/30">
                   <span className="text-[15px] font-semibold text-topper-off-white/80">Language / भाषा</span>
                   <select
@@ -780,18 +1018,27 @@ export default function TaskQuestPage() {
                           {task.description}
                         </p>
 
-                        {/* Scheduled Reminder Indicator */}
-                        {task.reminderTime && (
-                          <div className="flex items-center gap-1.5 text-[10px] font-bold text-topper-cyan bg-topper-cyan/5 border border-topper-cyan/20 px-2 py-1 rounded w-fit select-none">
-                            <Clock className="w-3.5 h-3.5" />
-                            <span>{new Date(task.reminderTime).toLocaleString(language === 'hi' ? 'hi-IN' : 'en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}</span>
-                          </div>
-                        )}
+                        {/* Meta badges container */}
+                        <div className="flex flex-wrap gap-2">
+                          {task.reminderTime && (
+                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-topper-cyan bg-topper-cyan/5 border border-topper-cyan/20 px-2 py-1 rounded w-fit select-none">
+                              <Clock className="w-3.5 h-3.5" />
+                              <span>{new Date(task.reminderTime).toLocaleString(language === 'hi' ? 'hi-IN' : 'en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}</span>
+                            </div>
+                          )}
+
+                          {task.googleTaskId && (
+                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-green-500 bg-green-500/5 border border-green-500/20 px-2 py-1 rounded w-fit select-none">
+                              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                              <span>Google Synced</span>
+                            </div>
+                          )}
+                        </div>
 
                         {/* Tags & Priority row */}
                         <div className="flex flex-wrap gap-1.5 mt-1">
