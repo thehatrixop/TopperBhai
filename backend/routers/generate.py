@@ -536,40 +536,6 @@ def _shuffle_options_for_questions(questions: list[dict]) -> list[dict]:
 
 
 
-# Helper to fetch PYQs from the database
-def fetch_pyqs_for_topics(topic_ids: list[str], min_year: int = None, limit_per_topic: int = None) -> list[dict]:
-    if not topic_ids:
-        return []
-    all_pyqs = []
-    for topic_id in topic_ids:
-        query = supabase.table("pyqs").select("*").eq("topic_id", topic_id)
-        if min_year is not None:
-            query = query.gte("year", min_year)
-        res = query.execute()
-        topic_pyqs = res.data or []
-        if limit_per_topic is not None and len(topic_pyqs) > limit_per_topic:
-            random.shuffle(topic_pyqs)
-            topic_pyqs = topic_pyqs[:limit_per_topic]
-        all_pyqs.extend(topic_pyqs)
-    return all_pyqs
-
-# Helper to format PYQs as context string
-def format_pyqs_for_context(pyqs: list[dict], topic_id_to_name: dict) -> str:
-    lines = []
-    for idx, q in enumerate(pyqs, 1):
-        topic_name = topic_id_to_name.get(q.get("topic_id"), "General Topic")
-        lines.append(f"PYQ Question {idx} [Topic: {topic_name}] [Year: {q.get('year', 'N/A')}]: {q.get('question_text')}")
-        opts = q.get("options")
-        if opts and isinstance(opts, dict):
-            for k, v in opts.items():
-                lines.append(f"  {k}: {v}")
-        lines.append(f"Correct Answer Key: {q.get('answer_key')}")
-        if q.get("solution"):
-            lines.append(f"Explanation/Solution: {q.get('solution')}")
-        lines.append("")
-    return "\n".join(lines).strip()
-
-
 def get_topic_content_text(topic: dict) -> str:
     topic_id = topic.get("id")
     topic_name = topic.get("name")
@@ -606,16 +572,7 @@ def fetch_cached_questions_for_topics(topic_ids: list[str], challenge: str) -> l
 
 
 def fetch_template_questions(topic_ids: list[str]) -> list[dict]:
-    # Try fetching from pyqs table first
-    try:
-        pyqs = fetch_pyqs_for_topics(topic_ids, limit_per_topic=5)
-        if pyqs and len(pyqs) >= 5:
-            random.shuffle(pyqs)
-            return pyqs[:10]
-    except Exception as e:
-        print(f"  [WARN] Failed to fetch template PYQs: {e}")
-    
-    # Fallback to generated_questions
+    # Fetch template questions from generated_questions table only
     try:
         res = supabase.table("generated_questions").select("*").in_("topic_id", topic_ids).execute()
         if res.data:
@@ -663,10 +620,10 @@ def cache_generated_questions(questions: list[dict], topic_name_to_id: dict, cha
 # ── Main endpoint ─────────────────────────────────────────────────────────────
 @router.post("/generate-paper")
 def generate_paper(request: PaperRequest):
-    if not request.include_notes and not request.include_pyqs:
+    if not request.include_notes:
         raise HTTPException(
             status_code=400,
-            detail="At least one study source (Notes or PYQs) must be selected."
+            detail="Notes must be selected."
         )
 
     # 1. Fetch matching topic records
@@ -685,18 +642,17 @@ def generate_paper(request: PaperRequest):
     print(f"Challenge      : {request.challenge}")
     print(f"Questions      : {request.question_count}")
     print(f"Include Notes  : {request.include_notes}")
-    print(f"Include PYQs   : {request.include_pyqs}")
 
     topic_ids = [t["id"] for t in topic_records.data]
     topic_id_to_name = {t["id"]: t["name"] for t in topic_records.data}
     topic_name_to_id = {t["name"]: t["id"] for t in topic_records.data}
     num_topics = len(topic_records.data)
 
-    # RULE 1: If num_topics > 5, reuse questions directly without any LLM call!
+    # RULE 1: If num_topics > 5, reuse questions directly from cache without LLM if there are enough!
     if num_topics > 5:
-        print(f"  [Routing Rule] More than 5 topics selected ({num_topics}). Reusing questions directly...")
+        print(f"  [Routing Rule] More than 5 topics selected ({num_topics}). Reusing cached questions directly...")
         
-        # 1. Fetch cached generated questions
+        # Fetch cached generated questions
         raw_cached = fetch_cached_questions_for_topics(topic_ids, request.challenge)
         pool = []
         for q in raw_cached:
@@ -709,27 +665,14 @@ def generate_paper(request: PaperRequest):
                 "type":           q.get("question_type", "mcq")
             })
             
-        # 2. Fetch PYQs to populate the pool if we don't have enough generated questions
-        if len(pool) < request.question_count:
-            pyqs = fetch_pyqs_for_topics(topic_ids)
-            for q in pyqs:
-                pool.append({
-                    "topic":          topic_id_to_name.get(q.get("topic_id"), "General Topic"),
-                    "question":       q["question_text"],
-                    "options":        q["options"],
-                    "correct_answer": q["answer_key"],
-                    "explanation":    q.get("solution") or "No solution explanation available.",
-                    "type":           q.get("type", "mcq")
-                })
-                
-        # If we have questions, sample and return
-        if pool:
+        # If we have enough questions, sample and return
+        if len(pool) >= request.question_count:
             random.shuffle(pool)
             selected = pool[:request.question_count]
             for idx, q in enumerate(selected, 1):
                 q["id"] = idx
             selected = _shuffle_options_for_questions(selected)
-            print(f"  [DB DIRECT] Returned {len(selected)} questions directly from cache/PYQ pool.")
+            print(f"  [DB DIRECT] Returned {len(selected)} questions directly from cache pool.")
             return {
                 "status":           "success",
                 "topics_loaded":    num_topics,
@@ -741,7 +684,7 @@ def generate_paper(request: PaperRequest):
                 "questions":        selected,
             }
 
-    # 1.5 Fetch previously generated questions from cache
+    # Fetch previously generated questions from cache
     cached_questions = []
     if request.include_generated_questions:
         raw_cached = fetch_cached_questions_for_topics(topic_ids, request.challenge)
@@ -792,47 +735,44 @@ def generate_paper(request: PaperRequest):
         print(f"  [Routing Rule] 3 <= num_topics <= 5 ({num_topics}). Fetching 10 template questions...")
         template_questions = fetch_template_questions(topic_ids)
 
-    import datetime
-    current_year = datetime.date.today().year
+    # Generate questions from Notes
+    print("  Routing: Notes Generation Mode")
+    topic_texts = []
+    failed_topics = []
 
-    # Option A: Only Notes (Notes Checked, PYQs Unchecked)
-    if request.include_notes and not request.include_pyqs:
-        print("  Routing: Only Notes mode")
-        topic_texts = []
-        failed_topics = []
+    for topic in topic_records.data:
+        try:
+            text = get_topic_content_text(topic)
+            topic_texts.append({
+                "name":  topic["name"],
+                "text":  text,
+                "chars": len(text),
+            })
+        except Exception as e:
+            print(f"    [WARN] Skipping note '{topic['name']}': {e}")
+            failed_topics.append(topic["name"])
 
-        for topic in topic_records.data:
-            try:
-                text = get_topic_content_text(topic)
-                topic_texts.append({
-                    "name":  topic["name"],
-                    "text":  text,
-                    "chars": len(text),
-                })
-            except Exception as e:
-                print(f"    [WARN] Skipping '{topic['name']}': {e}")
-                failed_topics.append(topic["name"])
+    if not topic_texts:
+        raise HTTPException(
+            status_code=500,
+            detail="Could not retrieve notes content for any selected topic."
+        )
 
-        if not topic_texts:
-            raise HTTPException(
-                status_code=500,
-                detail="Could not retrieve notes content for any selected topic."
-            )
+    # Merge into knowledge_context with no RAG rule restrictions
+    max_chars_total = 15000
+    chars_per_topic = max(3000, max_chars_total // len(topic_texts))
 
-        # Merge into knowledge_context with no RAG rule restrictions
-        # Limit the characters per topic to stay within the Cerebras TPM rate limit
-        max_chars_total = 15000
-        chars_per_topic = max(3000, max_chars_total // len(topic_texts))
+    knowledge_context = ""
+    for item in topic_texts:
+        topic_text = item["text"].strip()
+        if len(topic_text) > chars_per_topic:
+            topic_text = topic_text[:chars_per_topic] + "\n... [Content truncated to stay within rate limits] ..."
+        knowledge_context += f"\n\n{'='*60}\nTOPIC: {item['name']}\n{'='*60}\n\n"
+        knowledge_context += topic_text
+    knowledge_context = knowledge_context.strip()
 
-        knowledge_context = ""
-        for item in topic_texts:
-            topic_text = item["text"].strip()
-            if len(topic_text) > chars_per_topic:
-                topic_text = topic_text[:chars_per_topic] + "\n... [Content truncated to stay within rate limits] ..."
-            knowledge_context += f"\n\n{'='*60}\nTOPIC: {item['name']}\n{'='*60}\n\n"
-            knowledge_context += topic_text
-        knowledge_context = knowledge_context.strip()
-
+    questions = []
+    if remaining_count > 0:
         print(f"  Knowledge Context ready ({len(knowledge_context):,} chars). Calling LLM...")
         cerebras_client = get_cerebras_client()
         questions = generate_questions_with_ai(
@@ -849,158 +789,19 @@ def generate_paper(request: PaperRequest):
         if questions:
             cache_generated_questions(questions, topic_name_to_id, request.challenge)
 
-        combined_questions = cached_questions + questions
-        for idx, q in enumerate(combined_questions, 1):
-            q["id"] = idx
+    combined_questions = cached_questions + questions
+    for idx, q in enumerate(combined_questions, 1):
+        q["id"] = idx
 
-        return {
-            "status":           "success",
-            "topics_loaded":    len(topic_texts),
-            "topics":           [t["name"] for t in topic_texts],
-            "failed_topics":    failed_topics,
-            "challenge":        request.challenge,
-            "question_count":   len(combined_questions),
-            "knowledge_chars":  len(knowledge_context),
-            "questions":        combined_questions,
-        }
+    combined_questions = _shuffle_options_for_questions(combined_questions)
 
-    # Option B: Only PYQs (Notes Unchecked, PYQs Checked)
-    elif not request.include_notes and request.include_pyqs:
-        print("  Routing: Only PYQs mode (Direct Database Retrieval)")
-        pyqs = fetch_pyqs_for_topics(topic_ids)
-        if not pyqs:
-            raise HTTPException(
-                status_code=400,
-                detail="No PYQs found in the database for the selected topics."
-            )
-        
-        random.shuffle(pyqs)
-        selected_pyqs = pyqs[:remaining_count]
-        
-        formatted_pyqs = []
-        for q in selected_pyqs:
-            formatted_pyqs.append({
-                "topic":          topic_id_to_name.get(q.get("topic_id"), "General Topic"),
-                "question":       q["question_text"],
-                "options":        q["options"],
-                "correct_answer": q["answer_key"],
-                "explanation":    q.get("solution") or "No solution explanation available.",
-                "type":           q.get("type", "mcq")
-            })
-            
-        combined_questions = cached_questions + formatted_pyqs
-        for idx, q in enumerate(combined_questions, 1):
-            q["id"] = idx
-            
-        combined_questions = _shuffle_options_for_questions(combined_questions)
-        print(f"  [DB ONLY] Returned {len(combined_questions)} questions directly from database.")
-        
-        return {
-            "status":           "success",
-            "topics_loaded":    num_topics,
-            "topics":           [t["name"] for t in topic_records.data],
-            "failed_topics":    [],
-            "challenge":        request.challenge,
-            "question_count":   len(combined_questions),
-            "knowledge_chars":  0,
-            "questions":        combined_questions,
-        }
-
-    # Option C: Notes + PYQs (Both Checked)
-    else:
-        print("  Routing: Notes + PYQs mode (Blended Generation)")
-        
-        # Determine how many PYQs and Notes questions to fetch/generate
-        pyq_target = request.question_count // 2
-        notes_target = request.question_count - pyq_target
-        
-        # 1. Fetch PYQs directly from DB
-        pyqs = fetch_pyqs_for_topics(topic_ids)
-        selected_pyqs = []
-        if pyqs:
-            random.shuffle(pyqs)
-            selected_pyqs = pyqs[:pyq_target]
-            print(f"    Selected {len(selected_pyqs)} PYQs directly from database.")
-            
-        # If we fetched fewer PYQs than the target, increase the Notes target
-        actual_pyq_count = len(selected_pyqs)
-        remaining_notes_target = request.question_count - actual_pyq_count
-        
-        # 2. Retrieve notes
-        topic_texts = []
-        failed_topics = []
-        for topic in topic_records.data:
-            try:
-                text = get_topic_content_text(topic)
-                topic_texts.append({
-                    "name":  topic["name"],
-                    "text":  text,
-                    "chars": len(text),
-                })
-            except Exception as e:
-                print(f"    [WARN] Skipping note '{topic['name']}': {e}")
-                failed_topics.append(topic["name"])
-                
-        # Format notes context
-        max_notes_chars = 15000
-        chars_per_topic = max(3000, max_notes_chars // len(topic_texts)) if topic_texts else 0
-        knowledge_context = ""
-        for item in topic_texts:
-            topic_text = item["text"].strip()
-            if len(topic_text) > chars_per_topic:
-                topic_text = topic_text[:chars_per_topic] + "\n... [Content truncated] ..."
-            knowledge_context += f"\nTOPIC: {item['name']}\n{topic_text}\n"
-            
-        knowledge_context = knowledge_context.strip()
-        
-        # 3. Generate the remaining count from Notes via LLM
-        generated_questions = []
-        if remaining_notes_target > 0 and knowledge_context:
-            print(f"    Generating {remaining_notes_target} questions from Notes via LLM...")
-            cerebras_client = get_cerebras_client()
-            # Avoid duplicate generation matching already selected ones
-            avoid_texts = existing_question_texts + [q["question_text"] for q in selected_pyqs]
-            
-            generated_questions = generate_questions_with_ai(
-                knowledge_context = knowledge_context,
-                topics            = [t["name"] for t in topic_texts],
-                challenge         = request.challenge,
-                question_count    = remaining_notes_target,
-                client            = cerebras_client,
-                model             = CEREBRAS_TEXT_MODEL,
-                existing_questions = avoid_texts,
-                template_questions = template_questions,
-            )
-            
-            if generated_questions:
-                cache_generated_questions(generated_questions, topic_name_to_id, request.challenge)
-                
-        # 4. Format direct PYQs to target structure
-        formatted_pyqs = []
-        for q in selected_pyqs:
-            formatted_pyqs.append({
-                "topic":          topic_id_to_name.get(q.get("topic_id"), "General Topic"),
-                "question":       q["question_text"],
-                "options":        q["options"],
-                "correct_answer": q["answer_key"],
-                "explanation":    q.get("solution") or "No solution explanation available.",
-                "type":           q.get("type", "mcq")
-            })
-            
-        # Combine
-        combined_questions = cached_questions + formatted_pyqs + generated_questions
-        for idx, q in enumerate(combined_questions, 1):
-            q["id"] = idx
-            
-        combined_questions = _shuffle_options_for_questions(combined_questions)
-        
-        return {
-            "status":           "success",
-            "topics_loaded":    len(topic_texts),
-            "topics":           [t["name"] for t in topic_records.data],
-            "failed_topics":    failed_topics,
-            "challenge":        request.challenge,
-            "question_count":   len(combined_questions),
-            "knowledge_chars":  len(knowledge_context),
-            "questions":        combined_questions,
-        }
+    return {
+        "status":           "success",
+        "topics_loaded":    len(topic_texts),
+        "topics":           [t["name"] for t in topic_texts],
+        "failed_topics":    failed_topics,
+        "challenge":        request.challenge,
+        "question_count":   len(combined_questions),
+        "knowledge_chars":  len(knowledge_context),
+        "questions":        combined_questions,
+    }

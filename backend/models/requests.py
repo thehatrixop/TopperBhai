@@ -53,7 +53,6 @@ class PaperRequest(BaseModel):
     challenge: str
     question_count: int
     include_notes: bool = True
-    include_pyqs: bool = True
     include_generated_questions: bool = True
 
 class VideoRecommendRequest(BaseModel):

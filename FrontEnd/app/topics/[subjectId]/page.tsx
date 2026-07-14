@@ -21,7 +21,6 @@ export default function TopicsPage() {
   const [selectedTopics, setSelectedTopics] = React.useState<Set<string>>(new Set())
   const [isNavigating, setIsNavigating] = React.useState(false)
   const [includeNotes, setIncludeNotes] = React.useState(true)
-  const [includePyqs, setIncludePyqs] = React.useState(true)
   const [includeGenerated, setIncludeGenerated] = React.useState(true)
   const { language, setLanguage, t } = useLanguage()
 
@@ -99,11 +98,11 @@ export default function TopicsPage() {
   }
 
   const handleContinue = () => {
-    if (selectedTopics.size === 0 || (!includeNotes && !includePyqs)) return
+    if (selectedTopics.size === 0 || !includeNotes) return
     setIsNavigating(true)
     setTimeout(() => {
       router.push(
-        `/difficulty/${subjectId}?topics=${Array.from(selectedTopics).join(',')}&notes=${includeNotes}&pyqs=${includePyqs}&generated=${includeGenerated}`
+        `/difficulty/${subjectId}?topics=${Array.from(selectedTopics).join(',')}&notes=${includeNotes}&generated=${includeGenerated}`
       )
     }, 400)
   }
@@ -395,7 +394,7 @@ export default function TopicsPage() {
             {t('topics.studyMaterialsDesc')}
           </p>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl">
             {/* Notes Card */}
             <motion.button
               whileHover={{ y: -3, scale: 1.01 }}
@@ -422,35 +421,6 @@ export default function TopicsPage() {
                   : 'border-topper-graphite/60 bg-transparent'
               }`}>
                 {includeNotes && '✓'}
-              </div>
-            </motion.button>
-
-            {/* PYQs Card */}
-            <motion.button
-              whileHover={{ y: -3, scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              onClick={() => setIncludePyqs(!includePyqs)}
-              className={`p-5 rounded-lg border-2 text-left flex items-start gap-4 transition-all duration-300 relative group overflow-hidden ${
-                includePyqs
-                  ? 'bg-gradient-to-br from-topper-amber/10 to-transparent border-topper-amber text-topper-amber shadow-[0_0_15px_rgba(245,166,35,0.1)]'
-                  : 'bg-[#181818] border-topper-graphite text-topper-off-white/70 hover:border-topper-amber/40 hover:text-topper-amber/80'
-              }`}
-            >
-              <div className="text-3xl p-2 bg-topper-black/50 border border-topper-graphite/30 rounded-md">
-                ✍️
-              </div>
-              <div className="flex-1 min-w-0 pr-4">
-                <h4 className="font-bold text-base mb-1 tracking-tight">{t('topics.includePyqs')}</h4>
-                <p className={`text-xs leading-relaxed transition-colors ${includePyqs ? 'text-topper-off-white/80' : 'text-topper-off-white/50'}`}>
-                  {t('topics.includePyqsDesc')}
-                </p>
-              </div>
-              <div className={`mt-1 w-6 h-6 rounded-md flex items-center justify-center font-black text-sm border-2 transition-all duration-200 ${
-                includePyqs 
-                  ? 'border-topper-amber bg-topper-amber text-topper-black' 
-                  : 'border-topper-graphite/60 bg-transparent'
-              }`}>
-                {includePyqs && '✓'}
               </div>
             </motion.button>
 
@@ -484,7 +454,7 @@ export default function TopicsPage() {
             </motion.button>
           </div>
 
-          {!includeNotes && !includePyqs && (
+          {!includeNotes && (
             <motion.p
               initial={{ opacity: 0, y: -5 }}
               animate={{ opacity: 1, y: 0 }}

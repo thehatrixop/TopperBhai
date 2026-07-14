@@ -45,7 +45,6 @@ export default function DifficultyPage() {
   const subjectId = params.subjectId as string
   const topics = searchParams.get('topics')?.split(',') || []
   const includeNotes = searchParams.get('notes') !== 'false'
-  const includePyqs = searchParams.get('pyqs') !== 'false'
   const includeGenerated = searchParams.get('generated') !== 'false'
 
   const [selectedChallenge, setSelectedChallenge] = useState<string | null>(null)
@@ -75,7 +74,7 @@ export default function DifficultyPage() {
     const timeLimitParam = isTimerEnabled ? selectedTimeLimit : 'none'
     setTimeout(() => {
       router.push(
-        `/generating/${subjectId}?topics=${topics.join(',')}&challenge=${selectedChallenge}&questions=${selectedQuestionCount}&notes=${includeNotes}&pyqs=${includePyqs}&generated=${includeGenerated}&timeLimit=${timeLimitParam}`
+        `/generating/${subjectId}?topics=${topics.join(',')}&challenge=${selectedChallenge}&questions=${selectedQuestionCount}&notes=${includeNotes}&generated=${includeGenerated}&timeLimit=${timeLimitParam}`
       )
     }, 300)
   }
