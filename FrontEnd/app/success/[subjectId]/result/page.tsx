@@ -29,6 +29,36 @@ interface Question {
   explanation: string
 }
 
+function parseQuestionText(text: string) {
+  if (!text) return { cleanText: '', imageUrl: null }
+  
+  // 1. Try matching markdown image syntax first: ![anything]\s*(url)
+  const markdownMatch = text.match(/!\[.*?\]\s*\(\s*(https?:\/\/.*?)\s*\)/)
+  if (markdownMatch) {
+    const imageUrl = markdownMatch[1].trim()
+    const cleanText = text.replace(markdownMatch[0], '').trim()
+    return { cleanText, imageUrl }
+  }
+  
+  // 2. Try matching plain parenthesized image URL: (url ending in png/jpg/jpeg)
+  const parenMatch = text.match(/\(\s*(https?:\/\/.*?\.(?:png|jpg|jpeg|gif|webp)(?:\?.*?)?)\s*\)/i)
+  if (parenMatch) {
+    const imageUrl = parenMatch[1].trim()
+    const cleanText = text.replace(parenMatch[0], '').trim()
+    return { cleanText, imageUrl }
+  }
+
+  // 3. Try matching raw image URL
+  const rawUrlMatch = text.match(/(https?:\/\/.*?\.(?:png|jpg|jpeg|gif|webp)(?:\?.*?)?)/i)
+  if (rawUrlMatch) {
+    const imageUrl = rawUrlMatch[1].trim()
+    const cleanText = text.replace(rawUrlMatch[0], '').trim()
+    return { cleanText, imageUrl }
+  }
+  
+  return { cleanText: text, imageUrl: null }
+}
+
 interface PaperData {
   questions: Question[]
   topics: string[]
@@ -457,10 +487,27 @@ export default function ResultPage() {
                         {q.topic}
                       </span>
                       <h4 className="font-bold text-sm text-[#f1f5f9] leading-snug mt-0.5">
-                        {q.type === 'assertion_reason'
-                          ? (language === 'hi' ? 'अभिकथन (A) और कारण (R) सत्यापन' : 'Assertion (A) & Reason (R) Verification')
-                          : q.question
-                        }
+                        {(() => {
+                          const { cleanText, imageUrl } = parseQuestionText(
+                            q.type === 'assertion_reason'
+                              ? (language === 'hi' ? 'अभिकथन (A) और कारण (R) सत्यापन' : 'Assertion (A) & Reason (R) Verification')
+                              : q.question
+                          );
+                          return (
+                            <>
+                              <span className="block whitespace-pre-wrap">{cleanText}</span>
+                              {imageUrl && (
+                                <div className="mt-3 border border-slate-800 rounded-lg overflow-hidden max-w-xl bg-black/30">
+                                  <img 
+                                    src={imageUrl} 
+                                    alt="Question Diagram" 
+                                    className="max-h-[300px] w-auto object-contain mx-auto p-2"
+                                  />
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </h4>
                     </div>
                   </div>

@@ -29,6 +29,36 @@ interface Question {
   list_ii?: Record<string, string>
 }
 
+function parseQuestionText(text: string) {
+  if (!text) return { cleanText: '', imageUrl: null }
+  
+  // 1. Try matching markdown image syntax first: ![anything]\s*(url)
+  const markdownMatch = text.match(/!\[.*?\]\s*\(\s*(https?:\/\/.*?)\s*\)/)
+  if (markdownMatch) {
+    const imageUrl = markdownMatch[1].trim()
+    const cleanText = text.replace(markdownMatch[0], '').trim()
+    return { cleanText, imageUrl }
+  }
+  
+  // 2. Try matching plain parenthesized image URL: (url ending in png/jpg/jpeg)
+  const parenMatch = text.match(/\(\s*(https?:\/\/.*?\.(?:png|jpg|jpeg|gif|webp)(?:\?.*?)?)\s*\)/i)
+  if (parenMatch) {
+    const imageUrl = parenMatch[1].trim()
+    const cleanText = text.replace(parenMatch[0], '').trim()
+    return { cleanText, imageUrl }
+  }
+
+  // 3. Try matching raw image URL
+  const rawUrlMatch = text.match(/(https?:\/\/.*?\.(?:png|jpg|jpeg|gif|webp)(?:\?.*?)?)/i)
+  if (rawUrlMatch) {
+    const imageUrl = rawUrlMatch[1].trim()
+    const cleanText = text.replace(rawUrlMatch[0], '').trim()
+    return { cleanText, imageUrl }
+  }
+  
+  return { cleanText: text, imageUrl: null }
+}
+
 interface PaperData {
   questions: Question[]
   topics: string[]
@@ -541,12 +571,29 @@ export default function SuccessPage() {
                               </span>
                             )}
                           </p>
-                          <p className="font-medium leading-relaxed">
-                            {q.type === 'assertion_reason'
-                              ? (q.question || (language === 'hi' ? 'नीचे दो कथन दिए गए हैं, एक को अभिकथन (A) और दूसरे को कारण (R) के रूप में लेबल किया गया है:' : 'Given below are two statements, one is labelled as Assertion (A) and the other is labelled as Reason (R):'))
-                              : q.question
-                            }
-                          </p>
+                          {(() => {
+                            const { cleanText, imageUrl } = parseQuestionText(
+                              q.type === 'assertion_reason'
+                                ? (q.question || (language === 'hi' ? 'नीचे दो कथन दिए गए हैं, एक को अभिकथन (A) और दूसरे को कारण (R) के रूप में लेबल किया गया है:' : 'Given below are two statements, one is labelled as Assertion (A) and the other is labelled as Reason (R):'))
+                                : q.question
+                            );
+                            return (
+                              <>
+                                <p className="font-medium leading-relaxed whitespace-pre-wrap">
+                                  {cleanText}
+                                </p>
+                                {imageUrl && (
+                                  <div className="mt-4 border border-topper-graphite/40 rounded-lg overflow-hidden max-w-xl bg-topper-black/30">
+                                    <img 
+                                      src={imageUrl} 
+                                      alt="Question Diagram" 
+                                      className="max-h-[300px] w-auto object-contain mx-auto p-2"
+                                    />
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
 
                           {/* Assertion/Reason custom statements in header */}
                           {q.type === 'assertion_reason' && (
@@ -606,12 +653,25 @@ export default function SuccessPage() {
 
                   {/* Print version always shows question */}
                   <div className="print-only p-5">
-                    <p className="font-bold mb-3">
-                      Q{index + 1}. {q.type === 'assertion_reason'
-                        ? (q.question || (language === 'hi' ? 'नीचे दो कथन दिए गए हैं, एक को अभिकथन (A) और दूसरे को कारण (R) के रूप में लेबल किया गया है:' : 'Given below are two statements, one is labelled as Assertion (A) and the other is labelled as Reason (R):'))
-                        : q.question
-                      }
-                    </p>
+                    {(() => {
+                      const { cleanText, imageUrl } = parseQuestionText(
+                        q.type === 'assertion_reason'
+                          ? (q.question || (language === 'hi' ? 'नीचे दो कथन दिए गए हैं, एक को अभिकथन (A) और दूसरे को कारण (R) के रूप में लेबल किया गया है:' : 'Given below are two statements, one is labelled as Assertion (A) and the other is labelled as Reason (R):'))
+                          : q.question
+                      );
+                      return (
+                        <>
+                          <p className="font-bold mb-3 whitespace-pre-wrap">
+                            Q{index + 1}. {cleanText}
+                          </p>
+                          {imageUrl && (
+                            <div className="mb-4">
+                              <img src={imageUrl} alt="Diagram" className="max-h-[250px] w-auto object-contain" />
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                     {q.type === 'assertion_reason' && (
                       <div className="space-y-1.5 mb-3 pl-4 border-l-2 border-black">
                         <p className="text-sm"><span className="font-bold">Assertion (A):</span> {q.assertion}</p>
