@@ -173,7 +173,7 @@ export default function SuccessPage() {
   }
 
   const handleSelectOption = (questionId: number, optionKey: string) => {
-    if (showAnswers || selectedAnswers[questionId]) return
+    if (showAnswers) return
     setSelectedAnswers(prev => ({
       ...prev,
       [questionId]: optionKey
