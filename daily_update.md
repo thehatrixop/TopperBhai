@@ -1,87 +1,48 @@
-# Daily Update - July 9, 2026
+# Daily Update - July 15, 2026
 
-Today, several major updates and fixes were implemented across the **TopperBhai** application to support multi-format question generation, resolve critical syntax errors, and polish the user interface with premium visual effects.
+Today, we successfully designed, developed, and deployed the cross-device Task Quest notification and calendar synchronization ecosystem. We resolved Google API routing errors, implemented background scheduling for Web Push (VAPID) alerts, and cleaned up orphaned test events.
 
 ---
 
 ## 🚀 Key Achievements
 
-### 1. Mixed Question Format Support (Back-end & Front-end)
-*   **Back-end Enhancements (`backend/routers/generate.py` & `backend/routers/chat.py`)**:
-    *   Replaced the strict single-correct MCQ generator with a robust generator that outputs a balanced (approx. 20% each) mix of 5 question types:
-        *   `mcq`: Multiple Choice Question
-        *   `msq`: Multiple Select Question (one or more correct options, comma-separated answers like `"A,C"`)
-        *   `fitb`: Fill in the Blanks (supporting user text input)
-        *   `assertion_reason`: Assertion (A) & Reason (R) statements
-        *   `matching`: List I and List II pairing questions
-    *   Upgraded option shuffling to correctly support MSQs and avoid breaking FITB or Assertion-Reason questions.
-    *   Improved the AI Tutor chat backend (`chat.py`) to correctly format, analyze, and discuss mistakes in the new question types.
-*   **Front-end Integration (`FrontEnd/app/success/[subjectId]/page.tsx`)**:
-    *   Built custom layouts and interactive forms/inputs for all 5 question types (FITB text field, checkbox multi-selects, Assertion-Reason layout grids, matching lists, and MCQs).
-    *   Added support for displaying explanations, results, and starting Question Chats for any of these question types.
+### 1. VAPID Key Generation & Expose Endpoint
+* **EC SECP256R1 VAPID Keys**:
+  * Implemented `generate_vapid.py` using Python's native `cryptography` library to generate correct URL-safe, non-padded base64 key pairs, automatically appending them to `backend/.env`.
+* **Public Key Endpoint**:
+  * Added `GET /api/v1/notifications/vapid-public-key` to serve the browser the public server key for push subscription registration.
 
-### 2. Premium Visual Selection Effects
-*   **Interactive Question Selector (`FrontEnd/app/difficulty/[subjectId]/page.tsx`)**:
-    *   Replaced the static question count selector with premium `motion.button` choices.
-    *   Added a smooth sliding background pill (`layoutId="activeQuestionBg"`) using Framer Motion that transitions between selected question counts.
-    *   Applied manga-style bold borders, offset shadows (`shadow-[4px_4px_0_rgba(0,0,0,1)]`), and a spring-loaded entry animation for the active checklist badge (`✓`).
-*   **Interactive Time Limit Selector**:
-    *   Applied the exact same sliding selection indicator (`layoutId="activeTimeLimitBg"`) and manga styling to the Time Limit options.
+### 2. FastAPI Web Push (VAPID) Notification Engine
+* **Push Subscription Storage**:
+  * Created the `task_reminders` table in Supabase to track local task IDs, JSON push subscriptions, scheduled notification times, and status.
+* **FastAPI Background Daemon Scheduler**:
+  * Integrated a lightweight background thread scheduler starting via FastAPI's `on_event("startup")` hook. It polls pending reminders every 15 seconds, sends Web Push payloads using `pywebpush`, and cleans up expired client subscriptions (HTTP 404/410 errors).
 
-### 3. Critical Fixes & UX Cleanup
-*   **Syntax & Build Error Fix (`success/[subjectId]/page.tsx`)**:
-    *   Removed a duplicate block of code outside the question loop that referenced undefined variables (`q`), resolving a blocking Next.js build crash.
-*   **Skeleton Loader component**:
-    *   Created `FrontEnd/components/Skeleton.tsx` to provide visual loading indicators during database topic fetches.
+### 3. Google Tasks OAuth & API Sync Gateway
+* **Google OAuth2 Flow**:
+  * Created `backend/routers/google_tasks.py` to authenticate users and request the `tasks` scope, mapping auth tokens to anonymous browser sessions via a `local_user_id` inside the `user_google_tokens` table.
+* **Sync API Endpoints**:
+  * Designed endpoints to sync local tasks (Title, Description, Due Dates, and Statuses) directly to a custom Google Tasks list named **"TopperBhai Task Quest"**. It supports task creation, updates, drag-and-drop state updates, and deletion.
+  * Corrected Google Tasks endpoint routing from `/v1/` to `/tasks/v1/` (resolving a critical `404 Not Found` API exception).
+
+### 4. Service Worker & Frontend PWA Upgrades
+* **Service Worker Registration**:
+  * Created `sw.js` in the frontend `public` directory. It listens for background push notifications and triggers native OS system dialogs on desktop/mobile browsers (with PWA home screen support on iOS).
+* **UI Controls & Connection Feedback**:
+  * Refactored `FrontEnd/app/features/task-quest/page.tsx` with **Connect Google Tasks** buttons in both desktop navbar and mobile menus.
+  * Created a green **Google Synced** pulsing badge on task cards to confirm active connection status.
+
+### 5. Automated Google Calendar Cleanup
+* **Orphaned Event Cleaner**:
+  * Executed a one-time cleanup script `clear_study_events.py` that connected to the Google API, queried the user's primary calendar, successfully identified and deleted **376** leftover study plan events (matching patterns like `W01-01` or `[W1]`), and cleaned up database tokens.
 
 ---
 
 ## 📁 Files Modified / Added
-*   **NEW** [Skeleton.tsx](file:///D:/prograamming/current%20project/FrontEnd/components/Skeleton.tsx) — Skeleton loading states for UI transitions.
-*   **MODIFY** [page.tsx (Success Page)](file:///D:/prograamming/current%20project/FrontEnd/app/success/%5BsubjectId%5D/page.tsx) — Removed duplicate JSX code, fixed build error, and styled inputs/explanations for new question types.
-*   **MODIFY** [page.tsx (Difficulty Selector)](file:///D:/prograamming/current%20project/FrontEnd/app/difficulty/%5BsubjectId%5D/page.tsx) — Animated active states and layout transitions for Question/Time selectors.
-*   **MODIFY** [generate.py](file:///D:/prograamming/current%20project/backend/routers/generate.py) — Integrated new system instructions for mixed question types and corrected shuffling algorithms.
-*   **MODIFY** [chat.py](file:///D:/prograamming/current%20project/backend/routers/chat.py) — Formatted question context for the AI tutor system depending on the question type.
-*   **MODIFY** [requests.py](file:///D:/prograamming/current%20project/backend/models/requests.py) & [QuestionChat.tsx](file:///D:/prograamming/current%20project/FrontEnd/components/QuestionChat.tsx) — Upgraded TypeScript types and Pydantic schemas to include new question types (`type`, `assertion`, `reason`, `list_i`, `list_ii`).
-*   **MODIFY** [page.tsx (Success Page)](file:///D:/prograamming/current%20project/FrontEnd/app/success/%5BsubjectId%5D/page.tsx) — Built complete Submit Test workflow, confirmation dialog modal, Results Card summary dashboard, and styled the gold/amber submit button.
-
-### 4. Interactive Test Submission & Results Panel
-*   **Submit Test Actions**:
-    *   Added a pulsing navigation bar **Submit Test** button and a premium tilted manga-style **Finish Challenge** bottom button.
-    *   Designed a high-contrast modal popup showing answered vs. total questions and alerting on unanswered items before submitting.
-    *   Stopped all timer loops and locked question input elements instantly upon submit confirmation.
-*   **Challenge Results Dashboard**:
-    *   Designed an inline **Challenge Results** block replacing the statistics bar with accuracy percentage, a detailed correct/incorrect/skipped grid, time taken, and dynamic tutor commentary based on performance.
-*   **Design & Color Alignment**:
-    *   Synchronized all custom buttons and warning panels to use the official website color system: solid gold/amber (`#f5a623`), charcoal (`#1a1a1a`), and rich black (`#0a0a0a`), ensuring a consistent and high-end feel.
-    *   Set modal backdrop overlay z-index to `z-[9999]` and increased the backdrop blur factor to completely prevent visual bleed-through.
-
-### 5. Sitewide Visual Redesign & UI/UX Audit Execution
-*   **Design Tokens & Radius Standardization**:
-    *   Aligned border radiuses across all key pages: cards and large content blocks use standard `$8\text{px}` (`rounded-lg`); dropdown selectors, input boxes, checkboxes, buttons, options, and actions use standard `$6\text{px}` (`rounded-md`).
-*   **Elevation Contrast Overhaul**:
-    *   Replaced muddy gradients on subjects, difficulty options, and question list cards with solid elevated carbon colors (`bg-[#121212]`), creating a clean, high-contrast grid system over the deep-black (`#0a0a0a`) background canvas.
-*   **Interactive Progress Tracking**:
-    *   Engineered dynamic color states on Success/Test page question numbers (`index + 1`). Badges show a muted color when unanswered and flip to solid amber with dark text when answered, allowing rapid visual scanning of test progress.
-*   **Files Modified**:
-    *   [app/subjects/page.tsx](file:///D:/prograamming/current%20project/FrontEnd/app/subjects/page.tsx)
-    *   [app/topics/[subjectId]/page.tsx](file:///D:/prograamming/current%20project/FrontEnd/app/topics/%5BsubjectId%5D/page.tsx)
-*   **MODIFY** [app/difficulty/[subjectId]/page.tsx](file:///D:/prograamming/current%20project/FrontEnd/app/difficulty/%5BsubjectId%5D/page.tsx)
-*   **MODIFY** [app/success/[subjectId]/page.tsx](file:///D:/prograamming/current%20project/FrontEnd/app/success/%5BsubjectId%5D/page.tsx)
-*   **MODIFY** [app/page.tsx](file:///D:/prograamming/current%20project/FrontEnd/app/page.tsx)
-
-### 6. Success Page Navbar Navigation Options
-*   **Homepage Navigation**:
-    *   Wrapped the `TopperBhai` logo title text in a Next.js `Link` pointing to `/`, allowing instant navigation back to the homepage.
-*   **Hamburger Navigation Menu**:
-    *   Imported `Menu` and `X` icons from Lucide.
-    *   Added a hamburger toggle button on the far right (after the Print/Download PDF button) inside the nav bar.
-    *   Constructed a premium, custom animated popover features menu list showing all core features (`Focus Dojo`, `Task Quest`, `Scribe Dojo`, `Grading Dojo`, `Concept Dojo`, and `Study Planner`) with dedicated icons and hover layouts.
-*   **Submit Test Button Design**:
-    *   Removed the red gradient, offset black border, pulse animation, and block shadow on the `Submit Test` button.
-    *   Matched its design directly with the neighboring `Print / Download PDF` button—using solid `bg-topper-amber text-topper-black border-2 border-topper-amber` for standard visual consistency in the nav bar.
-
-### 7. Finish Challenge Button Redesign
-*   **Card Design Alignment**:
-    *   Replaced the tilted gold-gradient finish button at the bottom of the success page with a layout that matches the standard question cards.
-    *   Styled with elevated carbon background (`bg-[#121212]`), graphite border stroke (`border-2 border-topper-graphite`), standard shadow layout, and hover highlight transitions. Removed the comic action badge overlays.
+* **NEW** [backend/generate_vapid.py](file:///d:/prograamming/current%20project/backend/generate_vapid.py) — SECP256R1 VAPID key generator.
+* **NEW** [backend/routers/notifications.py](file:///d:/prograamming/current%20project/backend/routers/notifications.py) — Web Push endpoints & FastAPI background scheduler.
+* **NEW** [backend/routers/google_tasks.py](file:///d:/prograamming/current%20project/backend/routers/google_tasks.py) — Google Tasks API sync endpoints.
+* **NEW** [FrontEnd/public/sw.js](file:///d:/prograamming/current%20project/FrontEnd/public/sw.js) — Service worker for background push delivery.
+* **MODIFY** [backend/main.py](file:///d:/prograamming/current%20project/backend/main.py) — Mounted notification/tasks routers and initialized startup thread.
+* **MODIFY** [backend/requirements.txt](file:///d:/prograamming/current%20project/backend/requirements.txt) — Added `pywebpush==1.14.0`.
+* **MODIFY** [FrontEnd/app/features/task-quest/page.tsx](file:///d:/prograamming/current%20project/FrontEnd/app/features/task-quest/page.tsx) — Integrated SW, OAuth triggers, sync triggers, and sync badges.
